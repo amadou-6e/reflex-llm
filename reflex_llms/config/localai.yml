@@ -1,0 +1,246 @@
+# LocalAI Configuration - OpenAI Model Aliases with Google Gemma & Qwen Models
+# This maps OpenAI model names to equivalent LocalAI models from your model zoo
+
+# =============================================================================
+# CHAT/TEXT COMPLETION MODELS
+# =============================================================================
+
+models:
+  # GPT-4 Series (Latest) - Using Gemma 3 12B for best balance
+  - name: "gpt-4"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-12b-it-qat-GGUF/resolve/main/gemma-3-12b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-12b-it-qat-Q4_K_M.gguf"
+    chat_message_format: |
+      <start_of_turn>user
+      {{ if .SystemPrompt }}{{ .SystemPrompt }}
+
+      {{ end }}{{ range .Messages }}{{ if eq .Role "user" }}{{ .Content }}{{ end }}{{ end }}<end_of_turn>
+      <start_of_turn>model
+
+  - name: "gpt-4-0613"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-12b-it-qat-GGUF/resolve/main/gemma-3-12b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-12b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-4-0314"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-12b-it-qat-GGUF/resolve/main/gemma-3-12b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-12b-it-qat-Q4_K_M.gguf"
+
+  # GPT-4 Turbo Series - Using Gemma 3 27B for high performance
+  - name: "gpt-4-turbo"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-27b-it-qat-GGUF/resolve/main/gemma-3-27b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-27b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-4-turbo-2024-04-09"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-27b-it-qat-GGUF/resolve/main/gemma-3-27b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-27b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-4-turbo-preview"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-27b-it-qat-GGUF/resolve/main/gemma-3-27b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-27b-it-qat-Q4_K_M.gguf"
+
+  # GPT-4o Series (Most Capable) - Using Qwen3 32B for maximum quality
+  - name: "gpt-4o"
+    urls:
+      - "https://huggingface.co/bartowski/Qwen_Qwen3-32B-GGUF/resolve/main/Qwen3-32B.Q4_K_M.gguf"
+    file: "Qwen3-32B.Q4_K_M.gguf"
+
+  - name: "gpt-4o-2024-08-06"
+    urls:
+      - "https://huggingface.co/bartowski/Qwen_Qwen3-32B-GGUF/resolve/main/Qwen3-32B.Q4_K_M.gguf"
+    file: "Qwen3-32B.Q4_K_M.gguf"
+
+  - name: "gpt-4o-mini"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-4b-it-qat-GGUF/resolve/main/gemma-3-4b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-4b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-4o-mini-2024-07-18"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-4b-it-qat-GGUF/resolve/main/gemma-3-4b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-4b-it-qat-Q4_K_M.gguf"
+
+  # GPT-3.5 Series - Using Gemma 3 4B for good performance
+  - name: "gpt-3.5-turbo"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-4b-it-qat-GGUF/resolve/main/gemma-3-4b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-4b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-3.5-turbo-0125"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-4b-it-qat-GGUF/resolve/main/gemma-3-4b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-4b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-3.5-turbo-1106"
+    urls:
+      - "https://huggingface.co/bartowski/google_gemma-3-4b-it-qat-GGUF/resolve/main/gemma-3-4b-it-qat-Q4_K_M.gguf"
+    file: "gemma-3-4b-it-qat-Q4_K_M.gguf"
+
+  - name: "gpt-3.5-turbo-instruct"
+    urls:
+      - "https://huggingface.co/ggml-org/gemma-3-1b-it-GGUF/resolve/main/gemma-3-1b-it-Q4_K_M.gguf"
+    file: "gemma-3-1b-it-Q4_K_M.gguf"
+
+# =============================================================================
+# SPECIALIZED MODELS
+# =============================================================================
+
+  # Reasoning Model - Using Phi-4 for logic/math tasks
+  - name: "gpt-4-reasoning"
+    urls:
+      - "https://huggingface.co/bartowski/microsoft_Phi-4-reasoning-plus-GGUF/resolve/main/Phi-4-reasoning-plus-Q4_K_M.gguf"
+    file: "Phi-4-reasoning-plus-Q4_K_M.gguf"
+
+  # Code Model - Using specialized Gemma code model
+  - name: "gpt-4-code"
+    urls:
+      - "https://huggingface.co/bartowski/qgallouedec_gemma-3-27b-it-codeforces-SFT-GGUF/resolve/main/gemma-3-27b-it-codeforces-SFT-Q4_K_M.gguf"
+    file: "gemma-3-27b-it-codeforces-SFT-Q4_K_M.gguf"
+
+# =============================================================================
+# ALTERNATIVE QWEN MODELS
+# =============================================================================
+
+  # Alternative high-quality models using Qwen3
+  - name: "qwen-8b"
+    urls:
+      - "https://huggingface.co/MaziyarPanahi/Qwen3-8B-GGUF/resolve/main/Qwen3-8B.Q4_K_M.gguf"
+    file: "Qwen3-8B.Q4_K_M.gguf"
+
+  - name: "qwen-14b"
+    urls:
+      - "https://huggingface.co/MaziyarPanahi/Qwen3-14B-GGUF/resolve/main/Qwen3-14B.Q4_K_M.gguf"
+    file: "Qwen3-14B.Q4_K_M.gguf"
+
+  - name: "qwen-30b"
+    urls:
+      - "https://huggingface.co/bartowski/Qwen_Qwen3-30B-A3B-GGUF/resolve/main/Qwen3-30B-A3B.Q4_K_M.gguf"
+    file: "Qwen3-30B-A3B.Q4_K_M.gguf"
+
+# =============================================================================
+# EMBEDDING MODELS
+# =============================================================================
+
+  # Text Embeddings
+  - name: "text-embedding-3-large"
+    urls:
+      - "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q8_0.gguf"
+    file: "nomic-embed-text-v1.5.Q8_0.gguf"
+    backend: "bert-embeddings"
+
+  - name: "text-embedding-3-small"
+    urls:
+      - "https://huggingface.co/nomic-ai/nomic-embed-text-v1-GGUF/resolve/main/nomic-embed-text-v1.Q8_0.gguf"
+    file: "nomic-embed-text-v1.Q8_0.gguf"
+    backend: "bert-embeddings"
+
+  - name: "text-embedding-ada-002"
+    urls:
+      - "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx"
+    file: "all-MiniLM-L6-v2.onnx"
+    backend: "bert-embeddings"
+
+# =============================================================================
+# AUDIO MODELS
+# =============================================================================
+
+  # Speech to Text (Whisper)
+  - name: "whisper-1"
+    urls:
+      - "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+    file: "ggml-base.en.bin"
+    backend: "whisper"
+
+  # Text to Speech
+  - name: "tts-1"
+    backend: "coqui"
+    model: "tts_models/en/ljspeech/tacotron2-DDC"
+
+  - name: "tts-1-hd"
+    backend: "coqui"
+    model: "tts_models/en/ljspeech/glow-tts"
+
+# =============================================================================
+# IMAGE MODELS
+# =============================================================================
+
+  # Image Generation (DALL-E equivalent) - Using Stable Diffusion
+  - name: "dall-e-3"
+    backend: "stablediffusion"
+    model: "runwayml/stable-diffusion-v1-5"
+    parameters:
+      scheduler_type: "dpm_solver_multistep"
+      cfg_scale: 7
+      steps: 20
+
+  - name: "dall-e-2"
+    backend: "stablediffusion"
+    model: "runwayml/stable-diffusion-v1-5"
+    parameters:
+      scheduler_type: "dpm_solver_multistep"
+      cfg_scale: 7
+      steps: 15
+
+# =============================================================================
+# VISION MODELS (GPT-4 Vision)
+# =============================================================================
+
+  - name: "gpt-4-vision-preview"
+    urls:
+      - "https://huggingface.co/cjpais/llava-1.6-mistral-7b-gguf/resolve/main/llava-v1.6-mistral-7b.Q4_K_M.gguf"
+      - "https://huggingface.co/cjpais/llava-1.6-mistral-7b-gguf/resolve/main/mmproj-model-f16.gguf"
+    file: "llava-v1.6-mistral-7b.Q4_K_M.gguf"
+    mmproj: "mmproj-model-f16.gguf"
+    backend: "llama-cpp"
+
+  - name: "gpt-4o-vision"
+    urls:
+      - "https://huggingface.co/cjpais/llava-1.6-mistral-7b-gguf/resolve/main/llava-v1.6-mistral-7b.Q4_K_M.gguf"
+      - "https://huggingface.co/cjpais/llava-1.6-mistral-7b-gguf/resolve/main/mmproj-model-f16.gguf"
+    file: "llava-v1.6-mistral-7b.Q4_K_M.gguf"
+    mmproj: "mmproj-model-f16.gguf"
+    backend: "llama-cpp"
+
+# =============================================================================
+# LEGACY MODELS (GPT-3 Base)
+# =============================================================================
+
+  - name: "text-davinci-003"
+    urls:
+      - "https://huggingface.co/MaziyarPanahi/Qwen3-4B-GGUF/resolve/main/Qwen3-4B.Q4_K_M.gguf"
+    file: "Qwen3-4B.Q4_K_M.gguf"
+
+  - name: "text-davinci-002"
+    urls:
+      - "https://huggingface.co/MaziyarPanahi/Qwen3-4B-GGUF/resolve/main/Qwen3-4B.Q4_K_M.gguf"
+    file: "Qwen3-4B.Q4_K_M.gguf"
+
+  - name: "code-davinci-002"
+    urls:
+      - "https://huggingface.co/bartowski/qgallouedec_gemma-3-27b-it-codeforces-SFT-GGUF/resolve/main/gemma-3-27b-it-codeforces-SFT-Q4_K_M.gguf"
+    file: "gemma-3-27b-it-codeforces-SFT-Q4_K_M.gguf"
+
+# =============================================================================
+# CONFIGURATION SETTINGS
+# =============================================================================
+
+# Global settings
+debug: false
+single_active_backend: true
+parallel_requests: true
+context_size: 8192
+
+# API settings
+cors: true
+preload_models_config: ""
+
+# Performance optimizations
+threads: 0  # Auto-detect CPU cores
+gpu_layers: 0  # Adjust based on your GPU
+f16: true  # Enable for better performance
+mmap: true  # Memory mapping for efficient loading

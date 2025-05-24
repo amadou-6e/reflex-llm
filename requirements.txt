@@ -1,0 +1,6 @@
+docker
+pytest
+python-dotenv
+openai
+pydantic>=2.0.0
+PyYAML
