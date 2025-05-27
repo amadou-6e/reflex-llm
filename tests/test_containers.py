@@ -8,7 +8,6 @@ import uuid
 from pathlib import Path
 
 # -- Ours --
-from reflex_llms.settings import MODEL_PATH
 from reflex_llms.containers import ContainerHandler
 # -- Tests --
 from tests.conftest import *
@@ -25,10 +24,10 @@ def container_handler(temp_dir: Path):
     """Create ContainerHandler instance with temporary path."""
     return ContainerHandler(
         host="127.0.0.1",
-        port=8081,
-        image="localai/localai:latest-cpu",
-        container_name="test-localai-handler",
-        models_path=temp_dir,
+        port=11435,
+        image="ollama/ollama:latest",
+        container_name="test-ollama-handler",
+        data_path=temp_dir,
     )
 
 
@@ -37,27 +36,28 @@ def integration_container_handler(temp_dir: Path):
     """Create ContainerHandler instance for integration tests."""
     return ContainerHandler(
         host="127.0.0.1",
-        port=8082,
-        container_name="integration-test-localai",
+        port=11436,
+        container_name="integration-test-ollama",
         startup_timeout=None,
-        models_path=temp_dir,
+        data_path=temp_dir,
     )
 
 
-def test_init_creates_models_directory(temp_dir: Path):
-    """Test that initialization creates models directory."""
-    models_path = temp_dir,
-    handler = ContainerHandler(models_path=models_path)
+def test_init_creates_data_directory(temp_dir: Path):
+    """Test that initialization creates data directory."""
+    data_path = temp_dir
+    handler = ContainerHandler(data_path=data_path)
 
-    assert models_path.exists()
-    assert handler.models_path == models_path
+    assert data_path.exists()
+    assert handler.data_path == data_path
 
 
-def test_init_default_models_path():
-    """Test that default models path is created."""
+def test_init_default_data_path():
+    """Test that default data path is created."""
     handler = ContainerHandler()
-    expected_path = Path(os.getcwd(), "models")
-    assert handler.models_path == MODEL_PATH
+    expected_path = Path.home() / ".ollama-docker"
+    assert handler.data_path == expected_path
+    assert expected_path.exists()
 
 
 def test_is_docker_running(container_handler: ContainerHandler):
@@ -84,38 +84,46 @@ def test_is_port_open_when_nothing_running(container_handler: ContainerHandler):
 def test_get_api_url(container_handler: ContainerHandler):
     """Test getting API URL."""
     url = container_handler.api_url
-    assert url == "http://127.0.0.1:8081/v1"
+    assert url == "http://127.0.0.1:11435"
+
+
+def test_get_openai_compatible_url(container_handler: ContainerHandler):
+    """Test getting OpenAI-compatible API URL."""
+    url = container_handler.openai_compatible_url
+    assert url == "http://127.0.0.1:11435/v1"
 
 
 def test_get_api_url_custom_host_port():
     """Test getting API URL with custom host and port."""
     handler = ContainerHandler(host="192.168.1.100", port=9090)
     url = handler.api_url
-    assert url == "http://192.168.1.100:9090/v1"
+    assert url == "http://192.168.1.100:9090"
+    url_v1 = handler.openai_compatible_url
+    assert url_v1 == "http://192.168.1.100:9090/v1"
 
 
-def test_models_path_creation_with_nested_dirs(tmp_path):
-    """Test that nested model directories are created properly."""
-    models_path = Path(tmp_path, "deep", "nested", "models")
-    handler = ContainerHandler(models_path=models_path)
+def test_data_path_creation_with_nested_dirs(tmp_path):
+    """Test that nested data directories are created properly."""
+    data_path = Path(tmp_path, "deep", "nested", "ollama")
+    handler = ContainerHandler(data_path=data_path)
 
-    assert models_path.exists()
-    assert models_path.is_dir()
+    assert data_path.exists()
+    assert data_path.is_dir()
 
 
-def test_container_handler_initialization_with_existing_models_dir(tmp_path):
-    """Test initialization when models directory already exists."""
-    models_path = Path(tmp_path, "existing_models")
-    models_path.mkdir(parents=True, exist_ok=True)
+def test_container_handler_initialization_with_existing_data_dir(tmp_path):
+    """Test initialization when data directory already exists."""
+    data_path = Path(tmp_path, "existing_ollama")
+    data_path.mkdir(parents=True, exist_ok=True)
 
     # Create a test file in the directory
-    test_file = Path(models_path, "test.txt")
+    test_file = Path(data_path, "test.txt")
     test_file.write_text("test content")
 
-    handler = ContainerHandler(models_path=models_path)
+    handler = ContainerHandler(data_path=data_path)
 
     # Directory should still exist and file should be preserved
-    assert models_path.exists()
+    assert data_path.exists()
     assert test_file.exists()
     assert test_file.read_text() == "test content"
 
@@ -125,15 +133,16 @@ def test_configuration_validation():
     handler = ContainerHandler(
         host="custom-host",
         port=9999,
-        image="custom/image:tag",
+        image="custom/ollama:tag",
         container_name="custom-name",
     )
 
     assert handler.host == "custom-host"
     assert handler.port == 9999
-    assert handler.image == "custom/image:tag"
+    assert handler.image == "custom/ollama:tag"
     assert handler.container_name == "custom-name"
-    assert handler.api_url == "http://custom-host:9999/v1"
+    assert handler.api_url == "http://custom-host:9999"
+    assert handler.openai_compatible_url == "http://custom-host:9999/v1"
 
 
 @pytest.mark.docker
@@ -239,8 +248,8 @@ def test_container_lifecycle(container_handler, capsys):
 
         # Verify output
         captured = capsys.readouterr()
-        assert "Started LocalAI container" in captured.out
-        assert "Stopped LocalAI container" in captured.out
+        assert "Started Ollama container" in captured.out
+        assert "Stopped Ollama container" in captured.out
 
     finally:
         # Always clean up
@@ -271,15 +280,16 @@ def test_ensure_running_creates_new_container(integration_container_handler: Con
         container.reload()
         assert container.status == "running"
 
-        # Verify LocalAI becomes ready (this might take a while)
+        # Verify Ollama becomes ready (this might take a while)
         # We'll wait a reasonable amount of time
         start_time = time.time()
-        while time.time() - start_time < 60 * 5:  # 5 minute timeout
+        while time.time(
+        ) - start_time < 60 * 3:  # 3 minute timeout (Ollama starts faster than LocalAI)
             if integration_container_handler._is_port_open():
                 break
             time.sleep(2)
 
-        # Note: We don't assert LocalAI is ready because it might take very long
+        # Note: We don't assert Ollama is ready because it might take time
         # The important thing is that the container is running
 
     finally:
@@ -333,6 +343,46 @@ def test_docker_not_available_error_handling():
     # When Docker is not running, ensure_running should raise RuntimeError
     with pytest.raises(RuntimeError, match="Docker is not running"):
         handler.ensure_running()
+
+
+def test_ollama_specific_port_check():
+    """Test that Ollama-specific health check endpoint is used."""
+    handler = ContainerHandler(port=19998)
+
+    # This should return False since nothing is running on this port
+    # and it's checking the Ollama-specific /api/tags endpoint
+    assert handler._is_port_open() is False
+
+
+def test_ollama_mount_configuration():
+    """Test that Ollama-specific mount configuration is correct."""
+    temp_path = Path("/tmp/test-ollama-mount")
+    handler = ContainerHandler(data_path=temp_path)
+
+    # Mock the container creation to inspect mounts
+    if handler._is_docker_running():
+        try:
+            existing = handler._get_container()
+            if existing:
+                existing.remove(force=True)
+
+            handler._pull_image()
+            container = handler._create_container()
+
+            # Check that the mount is configured correctly for Ollama
+            container_info = handler.client.api.inspect_container(container.id)
+            mounts = container_info['Mounts']
+
+            ollama_mount = next((m for m in mounts if m['Destination'] == '/root/.ollama'), None)
+            assert ollama_mount is not None
+            assert ollama_mount['Type'] == 'bind'
+
+        finally:
+            cleanup_container = handler._get_container()
+            if cleanup_container:
+                cleanup_container.remove(force=True)
+    else:
+        pytest.skip("Docker not running")
 
 
 if __name__ == "__main__":

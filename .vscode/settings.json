@@ -8,6 +8,8 @@
         "./src"
     ],
     "editor.formatOnSave": true,
+    "editor.formatOnPaste": false,
+    "editor.formatOnType": false,
     "editor.defaultFormatter": "eeyore.yapf",
     "diffEditor.maxFileSize": 0,
     "diffEditor.maxComputationTime": 0,
