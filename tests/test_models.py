@@ -228,7 +228,8 @@ def test_model_mappings_contain_expected_ollama_models():
 
 
 # Model Operations with Real Container
-@pytest.mark.slow
+
+
 def test_pull_tiny_model_with_container(model_manager, capsys):
     """Test pulling a very small model with real container."""
     # Use the smallest available model for testing
@@ -278,7 +279,6 @@ def test_copy_model_with_container(model_manager, capsys):
         assert f"Failed to tag model {source_model} -> {test_alias}" in captured.out
 
 
-@pytest.mark.slow
 def test_setup_minimal_openai_models_with_container(model_manager, capsys):
     """Test setting up minimal OpenAI models with real container."""
     # Use only the smallest models for testing

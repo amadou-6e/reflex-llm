@@ -4,3 +4,4 @@ python-dotenv
 openai
 pydantic>=2.0.0
 PyYAML
+setuptools
