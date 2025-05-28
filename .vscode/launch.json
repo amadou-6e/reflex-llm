@@ -8,7 +8,7 @@
       "program": "${file}",
       "console": "integratedTerminal",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src/;${workspaceFolder}/tests/;${PYTHONPATH}"
+        "PYTHONPATH": "${workspaceFolder}/;${workspaceFolder}/tests/;${PYTHONPATH}"
       }
     },
     {
@@ -18,7 +18,7 @@
       "program": "${file}",
       "console": "integratedTerminal",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src/:${workspaceFolder}/tests/:${PYTHONPATH}"
+        "PYTHONPATH": "${workspaceFolder}/:${workspaceFolder}/tests/:${PYTHONPATH}"
       }
     }
   ]

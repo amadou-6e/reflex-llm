@@ -1,0 +1,36 @@
+{
+    "_comment": "RefLex Configuration File - Customize as needed",
+    "openai_base_url": "https://api.openai.com/v1",
+    "azure_api_version": "2024-02-15-preview",
+    "azure_base_url": null,
+    "preference_order": [
+        "openai",
+        "azure",
+        "reflex"
+    ],
+    "timeout": 5.0,
+    "reflex_server": {
+        "host": "127.0.0.1",
+        "port": 11434,
+        "image": "ollama/ollama:latest",
+        "container_name": null,
+        "data_path": null,
+        "startup_timeout": 120,
+        "auto_setup": true,
+        "model_mappings": {
+            "minimal_setup": true,
+            "model_mapping": {
+                "gpt-3.5-turbo": "llama3.2:3b",
+                "gpt-4": "llama3.1:8b",
+                "gpt-4o": "gemma3:4b",
+                "gpt-4o-mini": "gemma3:1b",
+                "text-embedding-ada-002": "nomic-embed-text"
+            },
+            "minimal_model_mapping": {
+                "gpt-3.5-turbo": "llama3.2:3b",
+                "gpt-4o-mini": "gemma3:1b",
+                "text-embedding-ada-002": "nomic-embed-text"
+            }
+        }
+    }
+}

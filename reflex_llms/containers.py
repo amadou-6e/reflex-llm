@@ -42,14 +42,51 @@ Dependencies
 - pathlib : Path handling utilities
 """
 
-import os
 import docker
 import requests
 import time
+import uuid
 from typing import Optional
 from pathlib import Path
+from pydantic import BaseModel, Field
 # -- Ours --
 from reflex_llms.settings import *
+
+
+class ContainerConfig(BaseModel):
+    """Configuration interface for the ContainerManager.
+    """
+    host: str = Field(
+        default="127.0.0.1",
+        description="Host address for the container",
+    )
+    port: int = Field(
+        default=11434,
+        description="Port number for the container",
+    )
+    image: str = Field(
+        default="ollama/ollama:latest",
+        description="Docker image to use",
+    )
+    container_name: str | None = Field(
+        default=None,
+        description=
+        "Name of the container. Will derive randomized name from uuid generation if not provided",
+    )
+    data_path: Optional[Path] = Field(
+        default=None,
+        description="Path for data storage",
+    )
+    startup_timeout: int = Field(
+        default=120,
+        description="Timeout in seconds for container startup",
+    )
+
+    def model_post_init(self, context):
+        if self.container_name == None:
+            # Generate a unique container name if not provided
+            self.container_name = f"ollama-reflex-{uuid.uuid4().hex[:8]}"
+        return
 
 
 class ContainerHandler:
@@ -117,7 +154,7 @@ class ContainerHandler:
         host: str = "127.0.0.1",
         port: int = 11434,
         image: str = "ollama/ollama:latest",
-        container_name: str = "ollama-openai-backend",
+        container_name: str = "ollama-openai",
         data_path: Optional[Path] = None,
         startup_timeout: int = 120,
     ):

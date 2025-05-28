@@ -11,7 +11,7 @@ from unittest.mock import patch, Mock
 # -- Ours --
 from reflex_llms.server import ReflexServer
 from reflex_llms.containers import ContainerHandler
-from reflex_llms.models import OllamaModelManager
+from reflex_llms.models import OllamaManager
 # -- Tests --
 from tests.conftest import *
 from tests.utils import nuke_dir, clear_port
@@ -333,7 +333,7 @@ def test_reflex_server_initialization_no_auto_setup(reflex_server_no_auto_setup:
 
     # Check component initialization
     assert isinstance(server.container_handler, ContainerHandler)
-    assert isinstance(server.model_manager, OllamaModelManager)
+    assert isinstance(server.model_manager, OllamaManager)
 
     # Check that auto setup was skipped
     assert server._setup_complete is False
@@ -415,7 +415,7 @@ def test_setup_method_integration(reflex_server_no_auto_setup: ReflexServer):
          patch.object(server, '_setup_essential_models', return_value=True) as mock_setup_models, \
          patch.object(server, 'health_check', return_value=True) as mock_health:
 
-        result = server.setup()
+        result = server.start()
 
         # Verify all steps were called
         mock_ensure_running.assert_called_once()
@@ -437,7 +437,7 @@ def test_setup_method_failure(reflex_server_no_auto_setup: ReflexServer):
                       'ensure_running',
                       side_effect=Exception("Container failed")):
 
-        result = server.setup()
+        result = server.start()
 
         # Should return False and not mark setup complete
         assert result is False
@@ -649,7 +649,7 @@ def test_setup_with_model_failure(reflex_server_no_auto_setup: ReflexServer):
          patch.object(server, '_setup_essential_models', return_value=False), \
          patch.object(server, 'health_check', return_value=True):
 
-        result = server.setup()
+        result = server.start()
 
         # Should still succeed even if models failed
         assert result is True
@@ -665,7 +665,7 @@ def test_setup_with_health_check_failure(reflex_server_no_auto_setup: ReflexServ
          patch.object(server, '_setup_essential_models', return_value=True), \
          patch.object(server, 'health_check', return_value=False):
 
-        result = server.setup()
+        result = server.start()
 
         # Should fail if health check fails
         assert result is False

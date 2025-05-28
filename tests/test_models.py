@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Dict, List
 
 # -- Ours --
-from reflex_llms.models import OllamaModelManager
+from reflex_llms.models import OllamaManager
 from reflex_llms.containers import ContainerHandler
 
 
@@ -42,19 +42,19 @@ def ollama_container():
 @pytest.fixture
 def model_manager(ollama_container):
     """Create OllamaModelManager instance using the test container."""
-    return OllamaModelManager(ollama_url=ollama_container.api_url)
+    return OllamaManager(ollama_url=ollama_container.api_url)
 
 
 @pytest.fixture
 def model_manager_no_container():
     """Create OllamaModelManager instance without container for error testing."""
-    return OllamaModelManager(ollama_url="http://127.0.0.1:65432")
+    return OllamaManager(ollama_url="http://127.0.0.1:65432")
 
 
 # Initialization Tests
 def test_default_initialization():
     """Test default initialization values."""
-    manager = OllamaModelManager()
+    manager = OllamaManager()
     assert manager.ollama_url == "http://127.0.0.1:11434"
     assert isinstance(manager.model_mappings, dict)
     assert len(manager.model_mappings) > 0
@@ -63,13 +63,13 @@ def test_default_initialization():
 def test_custom_url_initialization():
     """Test initialization with custom URL."""
     custom_url = "http://localhost:8080"
-    manager = OllamaModelManager(ollama_url=custom_url)
+    manager = OllamaManager(ollama_url=custom_url)
     assert manager.ollama_url == custom_url
 
 
 def test_model_mappings_content():
     """Test that model mappings contain expected OpenAI models."""
-    manager = OllamaModelManager()
+    manager = OllamaManager()
     expected_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "text-embedding-ada-002"]
 
     for model in expected_models:
@@ -194,7 +194,7 @@ def test_setup_openai_models_empty_mappings(model_manager):
 # Model Mappings Structure Tests
 def test_model_mappings_structure():
     """Test that model mappings are properly structured."""
-    manager = OllamaModelManager()
+    manager = OllamaManager()
     mappings = manager.model_mappings
 
     # Verify all keys and values are strings
@@ -210,7 +210,7 @@ def test_model_mappings_structure():
 
 def test_model_mappings_contain_expected_models():
     """Test that model mappings contain expected OpenAI models."""
-    manager = OllamaModelManager()
+    manager = OllamaManager()
     expected_openai_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini"]
 
     for model in expected_openai_models:
@@ -219,7 +219,7 @@ def test_model_mappings_contain_expected_models():
 
 def test_model_mappings_contain_expected_ollama_models():
     """Test that model mappings contain expected Ollama models."""
-    manager = OllamaModelManager()
+    manager = OllamaManager()
     expected_ollama_models = ["llama3.2:3b", "llama3.1:8b", "llama3.1:70b"]
 
     ollama_models = list(manager.model_mappings.values())
@@ -319,7 +319,7 @@ def test_invalid_endpoint_request(model_manager):
 def test_request_timeout_handling():
     """Test request timeout handling with unreachable URL."""
     # Use a non-routable IP to test timeout (RFC 5737 test addresses)
-    manager = OllamaModelManager(ollama_url="http://192.0.2.1:11434")
+    manager = OllamaManager(ollama_url="http://192.0.2.1:11434")
 
     with pytest.raises(RuntimeError, match="Ollama API request failed"):
         manager._make_request("tags")
@@ -337,7 +337,7 @@ def test_container_api_url_property(ollama_container):
 
 def test_model_manager_uses_container_url(ollama_container):
     """Test that model manager uses container's URL correctly."""
-    manager = OllamaModelManager(ollama_url=ollama_container.api_url)
+    manager = OllamaManager(ollama_url=ollama_container.api_url)
 
     # Should be able to connect and get models
     models = manager.list_models()
@@ -347,7 +347,7 @@ def test_model_manager_uses_container_url(ollama_container):
 # Container Lifecycle Tests
 def test_container_persistence_across_model_operations(ollama_container):
     """Test that container remains stable across multiple operations."""
-    manager = OllamaModelManager(ollama_url=ollama_container.api_url)
+    manager = OllamaManager(ollama_url=ollama_container.api_url)
 
     # Multiple operations should all work
     models1 = manager.list_models()

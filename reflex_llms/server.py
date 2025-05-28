@@ -34,7 +34,7 @@ Custom configuration:
 >>> server = ReflexServer(
 ...     port=8080,
 ...     container_name="my-ai-server",
-...     essential_models_only=False,
+...     minimal_setup=False,
 ...     auto_setup=False
 ... )
 >>> success = server.setup()
@@ -60,11 +60,57 @@ Dependencies
 
 import time
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field
 
 # -- Ours --
-from reflex_llms.containers import ContainerHandler
-from reflex_llms.models import OllamaModelManager
+from reflex_llms.containers import (
+    ContainerHandler,
+    ContainerConfig,
+)
+from reflex_llms.models import OllamaManager, OllamaModelManagerConfig
+from reflex_llms.settings import *
+
+
+class ModelMapping(BaseModel):
+    """
+    Definition class for OpenAI -> Ollama model mappings.
+    """
+    minimal_setup: bool = Field(
+        default=False,
+        description="Whether to only setup essential models for faster startup",
+    )
+
+    model_mapping: Dict[str, str] = Field(
+        default=DEFAULT_MODEL_MAPPINGS,
+        description="Mapping of OpenAI model names to Ollama model identifiers.",
+    )
+
+    minimal_model_mapping: Dict[str, str] = Field(
+        default=DEFAULT_MINIMAL_MODEL_MAPPINGS,
+        description=
+        "Minimal mapping of OpenAI model names to Ollama model identifiers, with smaller preload times.",
+    )
+
+
+class ReflexServerConfig(ContainerConfig):
+    """
+    Pydantic configuration model for ReflexServer.
+    
+    This model provides validation and serialization for ReflexServer
+    initialization parameters, ensuring type safety and proper configuration
+    management for the OpenAI-compatible backend server.
+    """
+
+    auto_setup: bool = Field(
+        default=True,
+        description="Whether to automatically run setup during initialization",
+    )
+
+    model_mappings: ModelMapping = Field(
+        default=ModelMapping(),
+        description="Model mappings for OpenAI compatibility",
+    )
 
 
 class ReflexServer:
@@ -88,7 +134,7 @@ class ReflexServer:
         Path for persistent data storage. If None, uses default location
     auto_setup : bool, default True
         Whether to automatically run setup during initialization
-    essential_models_only : bool, default True
+    minimal_setup : bool, default True
         Whether to only setup essential models for faster startup
 
     Attributes
@@ -101,7 +147,7 @@ class ReflexServer:
         Name of the Docker container
     data_path : Path or None
         Path for persistent data storage
-    essential_models_only : bool
+    minimal_setup : bool
         Whether to use essential models only
     container_handler : ContainerHandler
         Handler for Docker container operations
@@ -122,7 +168,7 @@ class ReflexServer:
     ...     port=8080,
     ...     container_name="production-ai-server",
     ...     data_path=Path("/opt/ai-models"),
-    ...     essential_models_only=False
+    ...     minimal_setup=False
     ... )
 
     Manual setup control:
@@ -138,10 +184,16 @@ class ReflexServer:
         self,
         host: str = "127.0.0.1",
         port: int = 11434,
-        container_name: str = "reflex-server",
+        image: str = "ollama/ollama:latest",
+        container_name: str = "ollama-openai",
         data_path: Optional[Path] = None,
+        startup_timeout: int = 120,
         auto_setup: bool = True,
-        essential_models_only: bool = True,
+        model_mappings: Dict[str, Any] = {
+            "minimal_setup": False,
+            "model_mapping": DEFAULT_MODEL_MAPPINGS,
+            "minimal_model_mapping": DEFAULT_MINIMAL_MODEL_MAPPINGS
+        },
     ) -> None:
         """
         Initialize the RefLex OpenAI-compatible backend server.
@@ -158,24 +210,32 @@ class ReflexServer:
             Path for persistent data storage
         auto_setup : bool, default True
             Whether to automatically setup on initialization
-        essential_models_only : bool, default True
+        minimal_setup : bool, default True
             Whether to only setup essential models for faster startup
         """
         self.host = host
         self.port = port
         self.container_name = container_name
         self.data_path = data_path
-        self.essential_models_only = essential_models_only
+        self.auto_setup = auto_setup
+        self.minimal_setup = model_mappings.get("minimal_setup", False)
 
         # Initialize components
         self.container_handler = ContainerHandler(
             host=host,
             port=port,
+            image=image,
             container_name=container_name,
             data_path=data_path,
+            startup_timeout=startup_timeout,
         )
+        default_selection = model_mappings.get("minimal_model_mapping") \
+            if self.minimal_setup else model_mappings.get("model_mapping")
 
-        self.model_manager = OllamaModelManager(ollama_url=self.container_handler.api_url)
+        self.model_manager = OllamaManager(
+            ollama_url=self.container_handler.api_url,
+            model_mappings=default_selection,
+        )
 
         # Status tracking
         self._setup_complete: bool = False
@@ -183,10 +243,10 @@ class ReflexServer:
         self._health_check_interval: int = 30  # seconds
 
         # Auto-setup if requested
-        if auto_setup:
-            self.setup()
+        if self.auto_setup:
+            self.start()
 
-    def setup(self) -> bool:
+    def start(self) -> bool:
         """
         Complete setup: container + models + health checks.
         
@@ -232,10 +292,7 @@ class ReflexServer:
 
             # Step 3: Set up model mappings
             print("Setting up OpenAI model mappings...")
-            if self.essential_models_only:
-                success = self._setup_essential_models()
-            else:
-                success = self.model_manager.setup_openai_models()
+            success = self.model_manager.setup_openai_models()
 
             if not success:
                 print("Warning: Some models failed to setup, but backend is functional")
@@ -256,44 +313,6 @@ class ReflexServer:
         except Exception as e:
             print(f"Setup failed: {e}")
             return False
-
-    def _setup_essential_models(self) -> bool:
-        """
-        Setup only essential models for faster startup.
-        
-        Configures a minimal set of models that provide core OpenAI compatibility
-        without the overhead of downloading all available models. This is useful
-        for development environments or when quick startup is prioritized.
-
-        Returns
-        -------
-        bool
-            True if essential models were successfully configured, False otherwise
-
-        Notes
-        -----
-        Essential models include:
-        - gpt-3.5-turbo: General purpose chat model
-        - gpt-4o-mini: Lightweight chat model  
-        - text-embedding-ada-002: Text embedding model
-        """
-        essential_models: Dict[str, str] = {
-            "gpt-3.5-turbo": "llama3.2:3b",
-            "gpt-4o-mini": "llama3.2:1b",  # Smallest model
-            "text-embedding-ada-002": "nomic-embed-text"
-        }
-
-        # Temporarily replace mappings with essential ones
-        original_mappings = self.model_manager.model_mappings.copy()
-        self.model_manager.model_mappings = essential_models
-
-        try:
-            result = self.model_manager.setup_openai_models()
-        finally:
-            # Restore original mappings
-            self.model_manager.model_mappings = original_mappings
-
-        return result
 
     def _wait_for_ollama_ready(self, timeout: int = 120) -> None:
         """
@@ -497,7 +516,7 @@ class ReflexServer:
         print("Restarting RefLex OpenAI backend...")
         self.stop()
         time.sleep(2)
-        return self.setup()
+        return self.start()
 
     @property
     def api_url(self) -> str:

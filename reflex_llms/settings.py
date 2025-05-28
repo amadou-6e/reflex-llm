@@ -23,3 +23,14 @@ DEFAULT_MODEL_MAPPINGS = {
     "text-embedding-3-small": "nomic-embed-text",
     "text-embedding-3-large": "mxbai-embed-large"
 }
+
+DEFAULT_MINIMAL_MODEL_MAPPINGS = {
+    "gpt-3.5-turbo": "llama3.2:1b",
+    "gpt-4": "llama3.2:1b",
+    "gpt-4-turbo": "llama3.2:1b",
+    "gpt-4o": "llama3.2:1b",
+    "gpt-4o-mini": "llama3.2:1b",
+    "text-embedding-ada-002": "nomic-embed-text",
+    "text-embedding-3-small": "nomic-embed-text",
+    "text-embedding-3-large": "nomic-embed-text"
+}

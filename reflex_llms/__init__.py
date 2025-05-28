@@ -74,11 +74,17 @@ Dependencies
 
 import os
 import requests
-from typing import Dict, List, Optional, Any, Union
 import time
 import atexit
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Union
+from reflex_llms.server import (
+    ReflexServer,
+    ReflexServerConfig,
+    ModelMapping,
+)
 
-from reflex_llms.server import ReflexServer
+from reflex_llms.configs import load_reflex_config
 
 # Module-level state
 _cached_config: Optional[Dict[str, Any]] = None
@@ -106,26 +112,151 @@ def _cleanup_module_state() -> None:
 atexit.register(_cleanup_module_state)
 
 
-def get_openai_client_config(
+def get_openai_client_type(
     preference_order: Optional[List[str]] = None,
-    timeout: float = 5.0,
+    timeout: Optional[float] = 120.0,
     force_recheck: bool = False,
-) -> Dict[str, Any]:
+    openai_base_url: Optional[str] = None,
+    azure_api_version: Optional[str] = None,
+    azure_base_url: Optional[str] = None,
+    reflex_server_config: Optional[ReflexServerConfig] = None,
+    from_file: bool = False,
+    **kwargs: Any,
+) -> str:
     """
-    Get OpenAI client configuration with intelligent provider resolution.
+    Get OpenAI client configuration type with intelligent provider resolution.
     
     Attempts to connect to OpenAI-compatible providers in order of preference,
-    performing health checks and returning configuration for the first available
-    provider. Results are cached for performance optimization.
+    performing health checks and returning the provider type string for the first 
+    available provider. Optionally loads configuration from reflex.json file.
 
     Parameters
     ----------
     preference_order : list of str or None, default None
         Provider preference order. If None, defaults to ["openai", "azure", "reflex"]
-    timeout : float, default 5.0
-        Connection timeout in seconds for provider health checks
+    timeout : float or None, default None
+        Connection timeout in seconds for provider health checks. If None, defaults to 5.0
     force_recheck : bool, default False
         Force re-checking providers, ignoring cached configuration
+    openai_base_url : str or None, default None
+        Base URL for OpenAI API. If None, defaults to "https://api.openai.com/v1"
+    azure_api_version : str or None, default None
+        Azure OpenAI API version. If None, defaults to "2024-02-15-preview"
+    azure_base_url : str or None, default None
+        Custom Azure OpenAI base URL override. If None, uses AZURE_OPENAI_ENDPOINT env var
+    reflex_server_config : ReflexServerConfig or None, default None
+        RefLex server configuration object. If None, uses default configuration
+    from_file : bool, default False
+        Whether to automatically discover and load configuration from reflex.json
+    **kwargs : Any
+        Additional keyword arguments for RefLex server configuration
+
+    Returns
+    -------
+    str
+        Provider type string: "openai", "azure", or "reflex"
+
+    Raises
+    ------
+    RuntimeError
+        If no providers are available or accessible
+    """
+    global _cached_config, _selected_provider
+
+    # Resolve configuration parameters using encapsulated function
+    config = _resolve_configuration_parameters(
+        from_file=from_file,
+        preference_order=preference_order,
+        timeout=timeout,
+        openai_base_url=openai_base_url,
+        azure_api_version=azure_api_version,
+        azure_base_url=azure_base_url,
+        reflex_server_config=reflex_server_config,
+    )
+
+    # Extract resolved values
+    preference_order = config['preference_order']
+    timeout = config['timeout']
+    openai_base_url = config['openai_base_url']
+    azure_api_version = config['azure_api_version']
+    azure_base_url = config['azure_base_url']
+    reflex_server_config = config['reflex_server_config']
+
+    # Return cached provider type if available and not forcing recheck
+    if not force_recheck and _selected_provider is not None:
+        print(f"Using cached {_selected_provider} configuration")
+        return _selected_provider
+
+    print("Checking OpenAI API providers...")
+
+    for provider in preference_order:
+        print(f"  Trying {provider}...")
+
+        if provider == "openai":
+            client_config = _try_openai_provider(timeout=timeout, base_url=openai_base_url)
+            if client_config:
+                _cached_config = client_config.copy()
+                _selected_provider = "openai"
+                return "openai"
+
+        elif provider == "azure":
+            client_config = _try_azure_provider(timeout=timeout,
+                                                api_version=azure_api_version,
+                                                base_url=azure_base_url)
+            if client_config:
+                _cached_config = client_config.copy()
+                _selected_provider = "azure"
+                return "azure"
+
+        elif provider == "reflex":
+            client_config = _try_reflex_provider(reflex_server_config=reflex_server_config,
+                                                 **kwargs)
+            if client_config:
+                _cached_config = client_config.copy()
+                _selected_provider = "reflex"
+                return "reflex"
+
+    # Nothing worked
+    raise RuntimeError("No OpenAI providers available")
+
+
+def get_openai_client_config(
+    preference_order: Optional[List[str]] = None,
+    timeout: Optional[float] = None,
+    force_recheck: bool = False,
+    openai_base_url: Optional[str] = None,
+    azure_api_version: Optional[str] = None,
+    azure_base_url: Optional[str] = None,
+    reflex_server_config: Optional[ReflexServerConfig] = None,
+    from_file: bool = False,
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """
+    Get OpenAI client configuration dictionary with intelligent provider resolution.
+    
+    This function returns the actual configuration dictionary needed to initialize
+    an OpenAI client, while get_openai_client_config returns only the provider type.
+
+    Parameters
+    ----------
+    preference_order : list of str or None, default None
+        Provider preference order. If None, defaults to ["openai", "azure", "reflex"]
+    timeout : float or None, default None
+        Connection timeout in seconds for provider health checks. If None, defaults to 5.0
+    force_recheck : bool, default False
+        Force re-checking providers, ignoring cached configuration
+    openai_base_url : str or None, default None
+        Base URL for OpenAI API. If None, defaults to "https://api.openai.com/v1"
+    azure_api_version : str or None, default None
+        Azure OpenAI API version. If None, defaults to "2024-02-15-preview"
+    azure_base_url : str or None, default None
+        Custom Azure OpenAI base URL override. If None, uses AZURE_OPENAI_ENDPOINT env var
+    reflex_server_config : ReflexServerConfig or None, default None
+        RefLex server configuration object. If None, uses default configuration
+    from_file : bool, default False
+        Whether to automatically discover and load configuration from reflex.json
+    **kwargs : Any
+        Additional keyword arguments for RefLex server configuration
 
     Returns
     -------
@@ -139,40 +270,32 @@ def get_openai_client_config(
     ------
     RuntimeError
         If no providers are available or accessible
-
-    Examples
-    --------
-    Use default provider resolution:
-
-    >>> config = get_openai_client_config()
-    >>> print(f"Selected: {config['base_url']}")
-
-    Custom preference with forced recheck:
-
-    >>> config = get_openai_client_config(
-    ...     preference_order=["reflex", "openai"],
-    ...     force_recheck=True
-    ... )
-
-    Notes
-    -----
-    Provider resolution process:
-    1. **OpenAI**: Checks api.openai.com accessibility and OPENAI_API_KEY
-    2. **Azure**: Verifies Azure endpoint and required environment variables
-    3. **RefLex**: Creates/manages local Ollama server with automatic setup
-    
-    The first successful provider is cached and reused until force_recheck=True
-    or clear_cache() is called.
     """
     global _cached_config, _selected_provider
+
+    # Resolve configuration parameters using encapsulated function
+    config = _resolve_configuration_parameters(
+        from_file=from_file,
+        preference_order=preference_order,
+        timeout=timeout,
+        openai_base_url=openai_base_url,
+        azure_api_version=azure_api_version,
+        azure_base_url=azure_base_url,
+        reflex_server_config=reflex_server_config,
+    )
+
+    # Extract resolved values
+    preference_order = config['preference_order']
+    timeout = config['timeout']
+    openai_base_url = config['openai_base_url']
+    azure_api_version = config['azure_api_version']
+    azure_base_url = config['azure_base_url']
+    reflex_server_config = config['reflex_server_config']
 
     # Return cached config if available and not forcing recheck
     if not force_recheck and _cached_config is not None:
         print(f"Using cached {_selected_provider} configuration")
         return _cached_config.copy()
-
-    if preference_order is None:
-        preference_order = ["openai", "azure", "reflex"]
 
     print("Checking OpenAI API providers...")
 
@@ -180,104 +303,249 @@ def get_openai_client_config(
         print(f"  Trying {provider}...")
 
         if provider == "openai":
-            # Check OpenAI API
-            try:
-                response = requests.get("https://api.openai.com/v1/models",
-                                        headers={"Authorization": "Bearer test"},
-                                        timeout=timeout)
-                if response.status_code in [200, 401]:
-                    api_key = os.getenv("OPENAI_API_KEY")
-                    if api_key:
-                        print("✓ Using OpenAI API")
-                        config = {"api_key": api_key, "base_url": "https://api.openai.com/v1"}
-                        # Cache the result
-                        _cached_config = config.copy()
-                        _selected_provider = "openai"
-                        return config
-                    else:
-                        print("  OpenAI available but no API key")
-            except Exception:
-                print("  OpenAI not accessible")
+            client_config = _try_openai_provider(
+                timeout=timeout,
+                base_url=openai_base_url,
+            )
+            if client_config:
+                _cached_config = client_config.copy()
+                _selected_provider = "openai"
+                return client_config
 
         elif provider == "azure":
-            # Check Azure OpenAI
-            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-            api_key = os.getenv("AZURE_OPENAI_API_KEY")
-
-            if endpoint and api_key:
-                try:
-                    test_url = f"{endpoint.rstrip('/')}/openai/deployments"
-                    response = requests.get(test_url, timeout=timeout)
-                    if response.status_code < 500:
-                        print("  Using Azure OpenAI")
-                        config = {
-                            "api_key":
-                                api_key,
-                            "base_url":
-                                test_url,
-                            "api_version":
-                                os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-                        }
-                        # Cache the result
-                        _cached_config = config.copy()
-                        _selected_provider = "azure"
-                        return config
-                except Exception:
-                    pass
-            print("  Azure not available or not configured")
+            client_config = _try_azure_provider(
+                timeout=timeout,
+                api_version=azure_api_version,
+                base_url=azure_base_url,
+            )
+            if client_config:
+                _cached_config = client_config.copy()
+                _selected_provider = "azure"
+                return client_config
 
         elif provider == "reflex":
-            # Use or create RefLex server
-            global _reflex_server
-
-            if _reflex_server and _reflex_server.is_healthy:
-                print("  Using existing RefLex server")
-                config = {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
-                _cached_config = config.copy()
+            client_config = _try_reflex_provider(
+                reflex_server_config=reflex_server_config,
+                timeout=timeout,
+                **kwargs,
+            )
+            if client_config:
+                _cached_config = client_config.copy()
                 _selected_provider = "reflex"
-                return config
-
-            print("  Setting up RefLex server...")
-            try:
-                # Clean up old server if exists
-                if _reflex_server:
-                    try:
-                        _reflex_server.stop()
-                    except Exception:
-                        pass
-
-                _reflex_server = ReflexServer(port=11434,
-                                              container_name="openai-fallback-server",
-                                              auto_setup=True,
-                                              essential_models_only=True)
-
-                # Wait for setup (max 5 minutes)
-                for i in range(60):
-                    if _reflex_server._setup_complete and _reflex_server.is_healthy:
-                        print("  Using RefLex local server")
-                        config = {
-                            "api_key": "reflex",
-                            "base_url": _reflex_server.openai_compatible_url
-                        }
-                        # Cache the result
-                        _cached_config = config.copy()
-                        _selected_provider = "reflex"
-                        return config
-                    time.sleep(5)
-
-                # Setup failed
-                _reflex_server.stop()
-                _reflex_server = None
-                print("  RefLex setup failed")
-            except Exception as e:
-                print(f"  RefLex error: {e}")
-                _reflex_server = None
+                return client_config
 
     # Nothing worked
     raise RuntimeError("No OpenAI providers available")
 
-def _hell()-> None:
+
+def _resolve_configuration_parameters(
+    from_file: bool = False,
+    config_path: Optional[Union[str, Path]] = None,
+    filename: str = "reflex.json",
+    preference_order: Optional[List[str]] = None,
+    timeout: Optional[float] = None,
+    openai_base_url: Optional[str] = None,
+    azure_api_version: Optional[str] = None,
+    azure_base_url: Optional[str] = None,
+    reflex_server_config: Optional[ReflexServerConfig] = None,
+) -> Dict[str, Any]:
+    """
+    Resolve configuration parameters from file, provided values, and defaults.
+
+    """
+    # Initialize resolved values with provided parameters
+    resolved_config = {
+        'preference_order': preference_order,
+        'timeout': timeout,
+        'openai_base_url': openai_base_url,
+        'azure_api_version': azure_api_version,
+        'azure_base_url': azure_base_url,
+        'reflex_server_config': reflex_server_config,
+    }
+
+    # Load from file if requested and override None values
+    if from_file:
+        try:
+            file_config = load_reflex_config(config_path=config_path, filename=filename)
+
+            # Override parameters with file configuration (only if not explicitly provided)
+            if resolved_config['preference_order'] is None:
+                resolved_config['preference_order'] = file_config.preference_order
+            if resolved_config['timeout'] is None:
+                resolved_config['timeout'] = file_config.timeout
+            if resolved_config['openai_base_url'] is None:
+                resolved_config['openai_base_url'] = file_config.openai_base_url
+            if resolved_config['azure_api_version'] is None:
+                resolved_config['azure_api_version'] = file_config.azure_api_version
+            if resolved_config['azure_base_url'] is None:
+                resolved_config['azure_base_url'] = file_config.azure_base_url
+            if resolved_config['reflex_server_config'] is None:
+                resolved_config['reflex_server_config'] = file_config.reflex_server
+
+            print("Loaded configuration from reflex.json")
+        except Exception as e:
+            print(f"Failed to load reflex.json configuration: {e}")
+            print("Falling back to provided parameters and defaults...")
+
+    # Set defaults for any remaining None values
+    if resolved_config['preference_order'] is None:
+        resolved_config['preference_order'] = ["openai", "azure", "reflex"]
+    if resolved_config['timeout'] is None:
+        resolved_config['timeout'] = 5.0
+    if resolved_config['openai_base_url'] is None:
+        resolved_config['openai_base_url'] = "https://api.openai.com/v1"
+    if resolved_config['azure_api_version'] is None:
+        resolved_config['azure_api_version'] = "2024-02-15-preview"
+    # Note: azure_base_url and reflex_server_config can remain None
+
+    return resolved_config
+
+
+def _try_openai_provider(timeout: float, base_url: str) -> Optional[Dict[str, Any]]:
+    """
+    Attempt to configure OpenAI provider with configurable settings.
     
+    Parameters
+    ----------
+    timeout : float
+        Connection timeout in seconds
+    base_url : str
+        Base URL for OpenAI API
+        
+    Returns
+    -------
+    dict or None
+        OpenAI configuration if successful, None otherwise
+    """
+    try:
+        # Use configurable base URL for health check
+        models_url = f"{base_url.rstrip('/')}/models"
+        response = requests.get(models_url,
+                                headers={"Authorization": "Bearer test"},
+                                timeout=timeout)
+        if response.status_code in [200, 401]:
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                print("  Using OpenAI API")
+                return {"api_key": api_key, "base_url": base_url}
+            else:
+                print("  OpenAI available but no API key")
+    except Exception:
+        print("  OpenAI not accessible")
+
+    return None
+
+
+def _try_azure_provider(
+    timeout: float,
+    api_version: str,
+    base_url: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """
+    Attempt to configure Azure OpenAI provider with configurable settings.
+    
+    Parameters
+    ----------
+    timeout : float
+        Connection timeout in seconds
+    api_version : str
+        Azure OpenAI API version
+    base_url : str or None, default None
+        Custom Azure base URL. If None, uses AZURE_OPENAI_ENDPOINT env var
+        
+    Returns
+    -------
+    dict or None
+        Azure OpenAI configuration if successful, None otherwise
+    """
+    # Use provided base URL or fall back to environment variable
+    endpoint = base_url or os.getenv("AZURE_OPENAI_ENDPOINT")
+    api_key = os.getenv("AZURE_OPENAI_API_KEY")
+
+    if endpoint and api_key:
+        try:
+            test_url = f"{endpoint.rstrip('/')}/openai/deployments"
+            response = requests.get(test_url, timeout=timeout)
+            if response.status_code < 500:
+                print("  Using Azure OpenAI")
+                return {"api_key": api_key, "base_url": test_url, "api_version": api_version}
+        except Exception:
+            pass
+
+    print("  Azure not available or not configured")
+    return None
+
+
+def _try_reflex_provider(
+    reflex_server_config: Optional[ReflexServerConfig] = None,
+    timeout: float = 120.0,
+    **kwargs: Any,
+) -> Optional[Dict[str, Any]]:
+    """
+    Attempt to configure RefLex local provider with configurable settings.
+    
+    Parameters
+    ----------
+    reflex_server_config : ReflexServerConfig or None, default None
+        RefLex server configuration object
+    **kwargs : Any
+        Additional configuration parameters for RefLex server
+    
+    Returns
+    -------
+    dict or None
+        RefLex configuration if successful, None otherwise
+    """
+    global _reflex_server
+
+    if _reflex_server and _reflex_server.is_healthy:
+        print("  Using existing RefLex server")
+        return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
+
+    print("  Setting up RefLex server...")
+    try:
+        # Clean up old server if exists
+        if _reflex_server:
+            try:
+                _reflex_server.stop()
+            except Exception:
+                pass
+
+        # Create RefLex server with provided configuration or defaults
+        if reflex_server_config:
+            _reflex_server = ReflexServer(**reflex_server_config.model_dump())
+        else:
+            # Create default configuration with any provided kwargs
+            default_config = ReflexServerConfig(
+                port=kwargs.get('port', 11434),
+                container_name=kwargs.get('container_name', "openai-fallback-server"),
+                auto_setup=kwargs.get('auto_setup', True),
+                model_mappings=kwargs.get('model_mappings', ModelMapping(minimal_setup=True)),
+                host=kwargs.get('host', '127.0.0.1'),
+                image=kwargs.get('image', 'ollama/ollama:latest'),
+                data_path=kwargs.get('data_path'),
+                startup_timeout=kwargs.get('startup_timeout', 120))
+            _reflex_server = ReflexServer(**default_config.model_dump())
+
+        if not _reflex_server.auto_setup:
+            _reflex_server.start()
+
+        # Wait for setup (max 5 minutes)
+        for i in range(max(int(timeout / 5), 1)):
+            if _reflex_server._setup_complete and _reflex_server.is_healthy:
+                print("  Using RefLex local server")
+                return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
+            time.sleep(5)
+
+        # Setup failed
+        _reflex_server.stop()
+        _reflex_server = None
+        print("  RefLex setup failed")
+    except Exception as e:
+        print(f"  RefLex error: {e}")
+        _reflex_server = None
+
+    return None
 
 
 def get_openai_client(preference_order: Optional[List[str]] = None, **kwargs: Any) -> Any:
@@ -473,58 +741,6 @@ def get_module_status() -> Dict[str, Any]:
         "reflex_server_url":
             _reflex_server.openai_compatible_url if _reflex_server else None
     }
-
-
-# Convenience functions
-def get_client_dev_mode(**kwargs: Any) -> Any:
-    """
-    Get client preferring RefLex first for development environments.
-    
-    Convenience function that prioritizes local RefLex server for development
-    work, falling back to cloud providers if local server is unavailable.
-
-    Parameters
-    ----------
-    **kwargs : Any
-        Additional keyword arguments passed to get_openai_client
-
-    Returns
-    -------
-    openai.OpenAI
-        Configured OpenAI client with development-friendly provider priority
-
-    Examples
-    --------
-    >>> client = get_client_dev_mode()  # Prefers local RefLex
-    >>> print(f"Using: {get_selected_provider()}")
-    """
-    return get_openai_client(["reflex", "openai", "azure"], **kwargs)
-
-
-def get_client_prod_mode(**kwargs: Any) -> Any:
-    """
-    Get client preferring cloud APIs first for production environments.
-    
-    Convenience function that prioritizes cloud providers (OpenAI, Azure)
-    for production deployments, using RefLex as a fallback option.
-
-    Parameters
-    ----------
-    **kwargs : Any
-        Additional keyword arguments passed to get_openai_client
-
-    Returns
-    -------
-    openai.OpenAI
-        Configured OpenAI client with production-friendly provider priority
-
-    Examples
-    --------
-    >>> client = get_client_prod_mode()  # Prefers cloud APIs
-    >>> if is_using_reflex():
-    ...     print("Fallback to local server")
-    """
-    return get_openai_client(["openai", "azure", "reflex"], **kwargs)
 
 
 # Example usage

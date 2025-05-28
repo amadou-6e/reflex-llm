@@ -44,10 +44,32 @@ Dependencies
 import json
 import requests
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field
 from reflex_llms.settings import DEFAULT_MODEL_MAPPINGS
 
 
-class OllamaModelManager:
+class OllamaModelManagerConfig(BaseModel):
+    """
+    Pydantic configuration model for OllamaModelManager.
+    
+    This model provides validation and serialization for OllamaModelManager
+    initialization parameters, ensuring type safety and proper configuration
+    management.
+    """
+
+    ollama_url: str = Field(
+        default="http://127.0.0.1:11434",
+        description="Base URL for the Ollama API endpoint",
+    )
+
+    model_mappings: Optional[Dict[str, str] | None] = Field(
+        default=None,
+        description=
+        "Dictionary mapping OpenAI model names to Ollama model names. If None, uses DEFAULT_MODEL_MAPPINGS from settings.py"
+    )
+
+
+class OllamaManager:
     """
     Manages Ollama models and OpenAI compatibility mappings.
     
@@ -83,7 +105,11 @@ class OllamaModelManager:
     >>> success = manager.copy_model("source-model", "target-model")
     """
 
-    def __init__(self, ollama_url: str = "http://127.0.0.1:11434") -> None:
+    def __init__(
+        self,
+        ollama_url: str = "http://127.0.0.1:11434",
+        model_mappings: Dict[str, str] = None,
+    ) -> None:
         """
         Initialize the Ollama model manager.
 
@@ -95,7 +121,7 @@ class OllamaModelManager:
         self.ollama_url = ollama_url
 
         # OpenAI model mappings to Ollama models
-        self.model_mappings: Dict[str, str] = DEFAULT_MODEL_MAPPINGS
+        self.model_mappings: Dict[str, str] = model_mappings or DEFAULT_MODEL_MAPPINGS
 
     def _make_request(
         self,
