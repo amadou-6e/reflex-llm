@@ -281,38 +281,33 @@ class ReflexServer:
         """
         print("Setting up RefLex OpenAI-compatible backend...")
 
-        try:
-            # Step 1: Ensure container is running
-            print("Starting Ollama container...")
-            self.container_handler.ensure_running()
+        # Step 1: Ensure container is running
+        print("Starting Ollama container...")
+        self.container_handler.ensure_running()
 
-            # Step 2: Wait for Ollama to be fully ready
-            print("Waiting for Ollama to be ready...")
-            self._wait_for_ollama_ready()
+        # Step 2: Wait for Ollama to be fully ready
+        print("Waiting for Ollama to be ready...")
+        self._wait_for_ollama_ready()
 
-            # Step 3: Set up model mappings
-            print("Setting up OpenAI model mappings...")
-            success = self.model_manager.setup_openai_models()
+        # Step 3: Set up model mappings
+        print("Setting up OpenAI model mappings...")
+        success = self.model_manager.setup_openai_models()
 
-            if not success:
-                print("Warning: Some models failed to setup, but backend is functional")
+        if not success:
+            print("Warning: Some models failed to setup, but backend is functional")
 
-            # Step 4: Final health check
-            print("Performing final health check...")
-            if not self.health_check():
-                raise RuntimeError("Health check failed after setup")
+        # Step 4: Final health check
+        print("Performing final health check...")
+        if not self.health_check():
+            raise RuntimeError("Health check failed after setup")
 
-            self._setup_complete = True
+        self._setup_complete = True
 
-            print("RefLex OpenAI backend setup complete!")
-            print(f"OpenAI-compatible endpoint: {self.openai_compatible_url}")
-            print(f"Status endpoint: {self.api_url}/api/tags")
+        print("RefLex OpenAI backend setup complete!")
+        print(f"OpenAI-compatible endpoint: {self.openai_compatible_url}")
+        print(f"Status endpoint: {self.api_url}/api/tags")
 
-            return True
-
-        except Exception as e:
-            print(f"Setup failed: {e}")
-            return False
+        return True
 
     def _wait_for_ollama_ready(self, timeout: int = 120) -> None:
         """

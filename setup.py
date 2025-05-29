@@ -27,7 +27,8 @@ setup(
     python_requires=">=3.6",
     install_requires=parse_requirements("requirements.txt"),
     include_package_data=True,
+    packages=find_packages(exclude=["usage", "usage.*"]),
     package_data={
-        "docker_db": ["reflex_llms/configs/*/*",],
+        "reflex_llms": ["reflex_llms/configs/*/*",],
     },
 )

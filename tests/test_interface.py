@@ -4,11 +4,10 @@ Minimal mocking approach - only mock network responses and environment variables
 """
 import pytest
 import os
-import time
 import json
 import tempfile
+import docker
 from unittest.mock import patch, Mock
-from typing import Dict, Any
 from pathlib import Path
 
 # Load environment variables from .env file
@@ -19,6 +18,14 @@ load_dotenv()
 # -- Ours --
 import reflex_llms
 from reflex_llms.server import ReflexServer, ReflexServerConfig, ModelMapping
+
+# -- Tests --
+from tests.conftest import *
+from tests.utils import nuke_dir, clear_port
+
+# =======================================
+#                 Cleanup
+# =======================================
 
 
 @pytest.fixture(autouse=True)
@@ -461,31 +468,28 @@ def test_config_file_loading_fallback() -> None:
 def test_reflex_server_creation_real() -> None:
     """Test actual RefLex server creation (slow test)."""
     # Test with minimal timeout to avoid long waits if Docker isn't available
-    try:
-        provider_type = reflex_llms.get_openai_client_type(
-            ["reflex"],
-            timeout=2.0,
-            port=11435,  # Use different port to avoid conflicts
-            container_name="test-reflex-server")
 
-        if provider_type == "reflex":
-            # Server was successfully created
-            assert reflex_llms.get_selected_provider() == "reflex"
-            assert reflex_llms.is_using_reflex() is True
+    provider_type = reflex_llms.get_openai_client_type(
+        ["reflex"],
+        timeout=2.0,
+        reflex_server_config={
+            "port": 11435,
+            "container_name": "test-reflex-server"
+        },
+    )
 
-            server = reflex_llms.get_reflex_server()
-            assert server is not None
+    if provider_type == "reflex":
+        # Server was successfully created
+        assert reflex_llms.get_selected_provider() == "reflex"
+        assert reflex_llms.is_using_reflex() is True
 
-            # Test that we can get status
-            status = reflex_llms.get_module_status()
-            assert status["reflex_server_running"] is True
-            assert status["reflex_server_url"] is not None
+        server = reflex_llms.get_reflex_server()
+        assert server is not None
 
-    except RuntimeError as e:
-        if "Docker is not running" in str(e) or "No OpenAI providers available" in str(e):
-            pytest.skip("Docker not available or RefLex setup failed")
-        else:
-            raise
+        # Test that we can get status
+        status = reflex_llms.get_module_status()
+        assert status["reflex_server_running"] is True
+        assert status["reflex_server_url"] is not None
 
 
 def test_reflex_server_with_config_object() -> None:
@@ -498,9 +502,11 @@ def test_reflex_server_with_config_object() -> None:
         model_mappings=ModelMapping(minimal_setup=True))
 
     try:
-        provider_type = reflex_llms.get_openai_client_type(["reflex"],
-                                                           reflex_server_config=reflex_config,
-                                                           timeout=2.0)
+        provider_type = reflex_llms.get_openai_client_type(
+            ["reflex"],
+            reflex_server_config=reflex_config,
+            timeout=2.0,
+        )
 
         if provider_type == "reflex":
             assert reflex_llms.get_selected_provider() == "reflex"

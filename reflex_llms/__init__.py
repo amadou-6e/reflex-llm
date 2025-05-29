@@ -75,6 +75,7 @@ Dependencies
 import os
 import requests
 import time
+import openai
 import atexit
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
@@ -84,7 +85,7 @@ from reflex_llms.server import (
     ModelMapping,
 )
 
-from reflex_llms.configs import load_reflex_config
+from reflex_llms.configs import load_reflex_config, Config
 
 # Module-level state
 _cached_config: Optional[Dict[str, Any]] = None
@@ -171,7 +172,7 @@ def get_openai_client_type(
         openai_base_url=openai_base_url,
         azure_api_version=azure_api_version,
         azure_base_url=azure_base_url,
-        reflex_server_config=reflex_server_config,
+        reflex_server=reflex_server_config,
     )
 
     # Extract resolved values
@@ -180,7 +181,7 @@ def get_openai_client_type(
     openai_base_url = config['openai_base_url']
     azure_api_version = config['azure_api_version']
     azure_base_url = config['azure_base_url']
-    reflex_server_config = config['reflex_server_config']
+    reflex_server_config = config['reflex_server']
 
     # Return cached provider type if available and not forcing recheck
     if not force_recheck and _selected_provider is not None:
@@ -193,24 +194,31 @@ def get_openai_client_type(
         print(f"  Trying {provider}...")
 
         if provider == "openai":
-            client_config = _try_openai_provider(timeout=timeout, base_url=openai_base_url)
+            client_config = _try_openai_provider(
+                timeout=timeout,
+                base_url=openai_base_url,
+            )
             if client_config:
                 _cached_config = client_config.copy()
                 _selected_provider = "openai"
                 return "openai"
 
         elif provider == "azure":
-            client_config = _try_azure_provider(timeout=timeout,
-                                                api_version=azure_api_version,
-                                                base_url=azure_base_url)
+            client_config = _try_azure_provider(
+                timeout=timeout,
+                api_version=azure_api_version,
+                base_url=azure_base_url,
+            )
             if client_config:
                 _cached_config = client_config.copy()
                 _selected_provider = "azure"
                 return "azure"
 
         elif provider == "reflex":
-            client_config = _try_reflex_provider(reflex_server_config=reflex_server_config,
-                                                 **kwargs)
+            client_config = _try_reflex_provider(
+                reflex_server_config=reflex_server_config,
+                **kwargs,
+            )
             if client_config:
                 _cached_config = client_config.copy()
                 _selected_provider = "reflex"
@@ -281,7 +289,7 @@ def get_openai_client_config(
         openai_base_url=openai_base_url,
         azure_api_version=azure_api_version,
         azure_base_url=azure_base_url,
-        reflex_server_config=reflex_server_config,
+        reflex_server=reflex_server_config,
     )
 
     # Extract resolved values
@@ -290,7 +298,7 @@ def get_openai_client_config(
     openai_base_url = config['openai_base_url']
     azure_api_version = config['azure_api_version']
     azure_base_url = config['azure_base_url']
-    reflex_server_config = config['reflex_server_config']
+    reflex_server_config = config['reflex_server']
 
     # Return cached config if available and not forcing recheck
     if not force_recheck and _cached_config is not None:
@@ -342,63 +350,25 @@ def _resolve_configuration_parameters(
     from_file: bool = False,
     config_path: Optional[Union[str, Path]] = None,
     filename: str = "reflex.json",
-    preference_order: Optional[List[str]] = None,
-    timeout: Optional[float] = None,
-    openai_base_url: Optional[str] = None,
-    azure_api_version: Optional[str] = None,
-    azure_base_url: Optional[str] = None,
-    reflex_server_config: Optional[ReflexServerConfig] = None,
-) -> Dict[str, Any]:
-    """
-    Resolve configuration parameters from file, provided values, and defaults.
+    **kwargs,
+) -> Config:
+    """Resolve configuration with clean dict merging."""
 
-    """
-    # Initialize resolved values with provided parameters
-    resolved_config = {
-        'preference_order': preference_order,
-        'timeout': timeout,
-        'openai_base_url': openai_base_url,
-        'azure_api_version': azure_api_version,
-        'azure_base_url': azure_base_url,
-        'reflex_server_config': reflex_server_config,
-    }
+    config_data = {}
 
-    # Load from file if requested and override None values
+    # Load from file first (lowest priority)
     if from_file:
         try:
-            file_config = load_reflex_config(config_path=config_path, filename=filename)
-
-            # Override parameters with file configuration (only if not explicitly provided)
-            if resolved_config['preference_order'] is None:
-                resolved_config['preference_order'] = file_config.preference_order
-            if resolved_config['timeout'] is None:
-                resolved_config['timeout'] = file_config.timeout
-            if resolved_config['openai_base_url'] is None:
-                resolved_config['openai_base_url'] = file_config.openai_base_url
-            if resolved_config['azure_api_version'] is None:
-                resolved_config['azure_api_version'] = file_config.azure_api_version
-            if resolved_config['azure_base_url'] is None:
-                resolved_config['azure_base_url'] = file_config.azure_base_url
-            if resolved_config['reflex_server_config'] is None:
-                resolved_config['reflex_server_config'] = file_config.reflex_server
-
+            config_data = load_reflex_config(config_path=config_path, filename=filename)
             print("Loaded configuration from reflex.json")
         except Exception as e:
-            print(f"Failed to load reflex.json configuration: {e}")
-            print("Falling back to provided parameters and defaults...")
+            print(f"Failed to load configuration: {e}")
 
-    # Set defaults for any remaining None values
-    if resolved_config['preference_order'] is None:
-        resolved_config['preference_order'] = ["openai", "azure", "reflex"]
-    if resolved_config['timeout'] is None:
-        resolved_config['timeout'] = 5.0
-    if resolved_config['openai_base_url'] is None:
-        resolved_config['openai_base_url'] = "https://api.openai.com/v1"
-    if resolved_config['azure_api_version'] is None:
-        resolved_config['azure_api_version'] = "2024-02-15-preview"
-    # Note: azure_base_url and reflex_server_config can remain None
+    # Override with provided parameters (highest priority)
+    config_data.update({k: v for k, v in kwargs.items() if v is not None})
 
-    return resolved_config
+    # Validate then dump
+    return Config(**config_data).model_dump()
 
 
 def _try_openai_provider(timeout: float, base_url: str) -> Optional[Dict[str, Any]]:
@@ -498,6 +468,9 @@ def _try_reflex_provider(
     """
     global _reflex_server
 
+    if isinstance(reflex_server_config, dict):
+        reflex_server_config = ReflexServerConfig(**reflex_server_config)
+
     if _reflex_server and _reflex_server.is_healthy:
         print("  Using existing RefLex server")
         return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
@@ -548,7 +521,7 @@ def _try_reflex_provider(
     return None
 
 
-def get_openai_client(preference_order: Optional[List[str]] = None, **kwargs: Any) -> Any:
+def get_openai_client(preference_order: Optional[List[str]] = None, **kwargs: Any) -> openai.OpenAI:
     """
     Get configured OpenAI client using cached configuration.
     
@@ -589,11 +562,6 @@ def get_openai_client(preference_order: Optional[List[str]] = None, **kwargs: An
 
     >>> client = get_openai_client(["reflex", "openai"])
     """
-    try:
-        import openai
-    except ImportError:
-        raise ImportError("Install openai package: pip install openai")
-
     config = get_openai_client_config(preference_order, **kwargs)
     return openai.OpenAI(**config)
 
