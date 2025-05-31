@@ -46,6 +46,7 @@ import docker
 import requests
 import time
 import uuid
+import socket
 from typing import Optional
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -371,7 +372,167 @@ class ContainerHandler:
 
         raise ConnectionError(f"Ollama did not become ready within {timeout} seconds")
 
-    def ensure_running(self):
+    @staticmethod
+    def clear_port(port: int, container_prefix: str = ""):
+        """
+        Clear a port by stopping Docker containers that are using it.
+        
+        Continuously monitors and stops containers using the specified port until
+        the port is no longer in use. Only stops containers whose names start
+        with the given prefix.
+        
+        Parameters
+        ----------
+        port : int
+            Port number to clear of Docker containers.
+        container_prefix : str, optional
+            Prefix to match container names. Only containers with names starting
+            with this prefix will be stopped. Default is empty string (matches all).
+            
+        Notes
+        -----
+        This method will loop until no Docker containers are using the specified port.
+        It includes a 2-second wait after clearing to ensure port is fully released.
+        """
+        client = docker.from_env()
+
+        while True:
+            containers = client.containers.list(all=True)  # include stopped/exited containers
+            port_still_in_use = False
+
+            for container in containers:
+                container.reload()
+                ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+                if f"{port}/tcp" in ports and ports[f"{port}/tcp"] is not None:
+                    port_still_in_use = True
+                    if container.name.startswith(container_prefix):
+                        container.stop()
+
+            if not port_still_in_use:
+                break
+
+            time.sleep(0.5)
+
+        time.sleep(2)
+
+    @staticmethod
+    def is_port_in_use(port: int, host: str = "localhost") -> bool:
+        """
+        Check if a port is in use by network connectivity and Docker containers.
+        
+        Performs a two-stage check: first attempts network connection to the port,
+        then examines Docker containers for port bindings.
+        
+        Parameters
+        ----------
+        port : int
+            Port number to check for usage.
+        host : str, optional
+            Hostname or IP address to check. Default is "localhost".
+            
+        Returns
+        -------
+        bool
+            True if port is in use by either network service or Docker container,
+            False if port appears to be available.
+            
+        Notes
+        -----
+        Network check uses a 1-second timeout. Docker API errors are silently
+        ignored and treated as "port not in use".
+        """
+        # First check if something is responding on the port
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex((host, port))
+                if result == 0:  # Connection successful = port in use
+                    return True
+        except Exception:
+            pass
+
+        # Then check Docker containers
+        try:
+            client = docker.from_env()
+            containers = client.containers.list(all=True)
+
+            for container in containers:
+                container.reload()
+                ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
+                if f"{port}/tcp" in ports and ports[f"{port}/tcp"] is not None:
+                    return True
+
+        except Exception:
+            pass
+
+        return False
+
+    def delete(self, force: bool = False, remove_volumes: bool = False) -> bool:
+        """
+        Delete the container and optionally its associated volumes.
+        
+        Parameters
+        ----------
+        force : bool, optional
+            If True, force removal even if container is running by stopping it first.
+            If False, raises RuntimeError for running containers. Default is False.
+        remove_volumes : bool, optional
+            If True, remove volumes associated with the container. Default is False.
+            
+        Returns
+        -------
+        bool
+            True if container was successfully deleted, False if container did not exist.
+            
+        Raises
+        ------
+        RuntimeError
+            If Docker is not running, or if container is running and force=False.
+        docker.errors.APIError
+            If Docker API operations fail during container deletion.
+            
+        Notes
+        -----
+        Running containers are stopped with a 10-second timeout when force=True.
+        """
+        if not self._is_docker_running():
+            raise RuntimeError("Docker is not running")
+
+        container = self._get_container()
+        if not container:
+            print(f"Container {self.container_name} does not exist")
+            return False
+
+        try:
+            # Stop container first if it's running and force is True
+            container.reload()
+            if container.status == "running":
+                if force:
+                    print(f"Stopping running container {self.container_name}...")
+                    container.stop(timeout=10)
+                else:
+                    raise RuntimeError(
+                        f"Container {self.container_name} is running. Use force=True to stop and remove it."
+                    )
+
+            # Remove the container
+            print(f"Removing container {self.container_name}...")
+            container.remove(v=remove_volumes, force=force)
+
+            print(f"Successfully deleted container {self.container_name}")
+            return True
+
+        except Exception as e:
+            print(f"Failed to delete container {self.container_name}: {e}")
+            raise
+
+    def start(
+        self,
+        exists_ok: bool = True,
+        force: bool = False,
+        restart: bool = False,
+        attach_port: bool = True,
+    ):
         """
         Ensure Ollama container is running and ready to accept requests.
 
@@ -390,31 +551,62 @@ class ContainerHandler:
         docker.errors.DockerException
             If Docker operations fail
         """
-        # Check if port is already open
-        if self._is_port_open():
-            print("Ollama is already running and ready")
-            return
 
         # Check if Docker is available
         if not self._is_docker_running():
             raise RuntimeError(
                 "Docker is not running. Please start Docker or install Ollama manually.")
 
-        # Check if container exists and is running
+        # -> Container already running
+        # Check if container exists and is running and restart if requested
         if self._is_container_running():
-            print("Container is running but not ready, waiting...")
-            self._wait_for_ready()
+            if not exists_ok:
+                if force:
+                    print("Stopping existing Ollama container...")
+                    self.stop()
+                    print("Deleting existing Ollama container...")
+                    self.delete(force=True, remove_volumes=True)
+                else:
+                    raise RuntimeError(
+                        f"Container {self.container_name} is already running. Use exists_ok=True to allow this."
+                    )
+            if restart:
+                print("Restarting existing Ollama container...")
+                self.stop()
+                self._start_container()
+                self._wait_for_ready()
+                return
+            else:
+                print("Container is running but not ready, waiting...")
+                self._wait_for_ready()
+                return
+
+        # -> Container not running but ollama is reachable (probably locall installed)
+        if self._is_port_open() and attach_port:
+            print("Ollama is already running and ready")
             return
 
-        # Check if container exists but is stopped
+        # -> Port is in use by a different container or process
+        if self.is_port_in_use(self.port, self.host) and force:
+            print(f"Port {self.port} is in use, stopping existing container...")
+            self.clear_port(self.port)
+            if self.is_port_in_use(self.port, self.host):
+                raise RuntimeError(
+                    f"Port {self.port} is still in use after clearing. Please check manually.")
+
+        # -> Check if container exists but is stopped
         container = self._get_container()
         if container:
-            print("Starting existing Ollama container...")
-            self._start_container()
-            self._wait_for_ready()
-            return
+            if exists_ok:
+                print("Starting existing Ollama container...")
+                self._start_container()
+                self._wait_for_ready()
+                return
+            elif not exists_ok and force:
+                print("Deleting existing Ollama container...")
+                self.delete(force=True, remove_volumes=True)
 
-        # Create and start new container
+        # -> Create and start new container from scratch
         print("Creating new Ollama container...")
         self._pull_image()
         self._create_container()

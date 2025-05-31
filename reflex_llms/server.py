@@ -246,7 +246,7 @@ class ReflexServer:
         if self.auto_setup:
             self.start()
 
-    def start(self) -> bool:
+    def start(self, exists_ok: bool = True) -> bool:
         """
         Complete setup: container + models + health checks.
         
@@ -283,7 +283,7 @@ class ReflexServer:
 
         # Step 1: Ensure container is running
         print("Starting Ollama container...")
-        self.container_handler.ensure_running()
+        self.container_handler.start(exists_ok=exists_ok)
 
         # Step 2: Wait for Ollama to be fully ready
         print("Waiting for Ollama to be ready...")

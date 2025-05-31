@@ -24,7 +24,7 @@ def ollama_container():
 
     try:
         # Ensure Ollama container is running
-        container_handler.ensure_running()
+        container_handler.start()
 
         # Wait a bit for Ollama to be fully ready
         time.sleep(2)

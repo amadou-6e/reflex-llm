@@ -689,7 +689,7 @@ def test_container_lifecycle_real(lifecycle_server: ReflexServer):
 
     # Start container manually
     print("Testing container startup...")
-    server.container_handler.ensure_running()
+    server.container_handler.start()
 
     # Should now be running
     assert server.container_handler._is_container_running() is True
@@ -722,7 +722,7 @@ def test_model_download_and_management(model_download_server: ReflexServer):
     server = model_download_server
 
     # Setup container
-    server.container_handler.ensure_running()
+    server.container_handler.start()
     server._wait_for_ollama_ready()
 
     print("Testing model download operations...")
@@ -776,7 +776,7 @@ def test_openai_model_setup_real(openai_setup_server: ReflexServer):
     server = openai_setup_server
 
     # Setup container
-    server.container_handler.ensure_running()
+    server.container_handler.start()
     server._wait_for_ollama_ready()
 
     print("Testing OpenAI model setup...")
@@ -921,7 +921,7 @@ def test_server_robustness_and_recovery(robustness_server: ReflexServer):
         print(f"Cycle {i+1}")
 
         # Start
-        server.container_handler.ensure_running()
+        server.container_handler.start()
         assert server.container_handler._is_port_open() is True
 
         # Stop
@@ -939,7 +939,7 @@ def test_server_robustness_and_recovery(robustness_server: ReflexServer):
     assert health_stopped is False
 
     # When started
-    server.container_handler.ensure_running()
+    server.container_handler.start()
     server._wait_for_ollama_ready()
     health_running = server.health_check(force=True)
     assert health_running is True
@@ -966,7 +966,7 @@ def test_all_model_mappings(all_mappings_server: ReflexServer):
     """Test that all model mappings in the library can be processed."""
     server = all_mappings_server
 
-    server.container_handler.ensure_running()
+    server.container_handler.start()
     server._wait_for_ollama_ready()
 
     print("Testing all model mappings...")
@@ -1031,7 +1031,7 @@ def test_error_recovery_real(error_recovery_server: ReflexServer):
     server = error_recovery_server
 
     # Test setup when Docker is available
-    server.container_handler.ensure_running()
+    server.container_handler.start()
 
     # Test recovery from stopped container
     print("Testing recovery from stopped container...")

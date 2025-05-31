@@ -11,7 +11,7 @@
     "timeout": 5.0,
     "reflex_server": {
         "host": "127.0.0.1",
-        "port": 11434,
+        "port": 11435,
         "image": "ollama/ollama:latest",
         "container_name": null,
         "data_path": null,
