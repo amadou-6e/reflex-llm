@@ -246,7 +246,13 @@ class ReflexServer:
         if self.auto_setup:
             self.start()
 
-    def start(self, exists_ok: bool = True) -> bool:
+    def start(
+        self,
+        exists_ok: bool = True,
+        force: bool = False,
+        restart: bool = False,
+        attach_port: bool = True,
+    ) -> bool:
         """
         Complete setup: container + models + health checks.
         
@@ -283,7 +289,12 @@ class ReflexServer:
 
         # Step 1: Ensure container is running
         print("Starting Ollama container...")
-        self.container_handler.start(exists_ok=exists_ok)
+        is_container = self.container_handler.start(
+            exists_ok=exists_ok,
+            force=force,
+            restart=restart,
+            attach_port=attach_port,
+        )
 
         # Step 2: Wait for Ollama to be fully ready
         print("Waiting for Ollama to be ready...")
@@ -298,7 +309,7 @@ class ReflexServer:
 
         # Step 4: Final health check
         print("Performing final health check...")
-        if not self.health_check():
+        if is_container and not self.health_check():
             raise RuntimeError("Health check failed after setup")
 
         self._setup_complete = True
@@ -307,7 +318,7 @@ class ReflexServer:
         print(f"OpenAI-compatible endpoint: {self.openai_compatible_url}")
         print(f"Status endpoint: {self.api_url}/api/tags")
 
-        return True
+        return is_container
 
     def _wait_for_ollama_ready(self, timeout: int = 120) -> None:
         """

@@ -373,7 +373,11 @@ class ContainerHandler:
         raise ConnectionError(f"Ollama did not become ready within {timeout} seconds")
 
     @staticmethod
-    def clear_port(port: int, container_prefix: str = ""):
+    def clear_port(
+        port: int,
+        container_prefix: str = "",
+        port_inside_container: int = 11434,
+    ):
         """
         Clear a port by stopping Docker containers that are using it.
         
@@ -403,10 +407,14 @@ class ContainerHandler:
             for container in containers:
                 container.reload()
                 ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
-                if f"{port}/tcp" in ports and ports[f"{port}/tcp"] is not None:
-                    port_still_in_use = True
-                    if container.name.startswith(container_prefix):
-                        container.stop()
+                inside = f"{port_inside_container}/tcp"
+                if inside in ports:
+                    for mapping in ports[inside]:
+                        if mapping.get("HostPort", None) is not None \
+                        and mapping.get("HostPort") == str(port):
+                            port_still_in_use = True
+                            if container.name.startswith(container_prefix):
+                                container.stop()
 
             if not port_still_in_use:
                 break
@@ -532,7 +540,7 @@ class ContainerHandler:
         force: bool = False,
         restart: bool = False,
         attach_port: bool = True,
-    ):
+    ) -> bool:
         """
         Ensure Ollama container is running and ready to accept requests.
 
@@ -541,6 +549,9 @@ class ContainerHandler:
         - Verifies Docker availability  
         - Starts existing containers or creates new ones as needed
         - Waits for service readiness before returning
+
+        Returns True, if a new container was created or an existing one was restarted.
+        Returns False, if the service was already running and no action was taken.
 
         Raises
         ------
@@ -560,7 +571,14 @@ class ContainerHandler:
         # -> Container already running
         # Check if container exists and is running and restart if requested
         if self._is_container_running():
-            if not exists_ok:
+            if exists_ok:
+                if restart:
+                    print("Restarting existing Ollama container...")
+                    self.stop()
+                    self._start_container()
+                    self._wait_for_ready()
+                    return True
+            else:
                 if force:
                     print("Stopping existing Ollama container...")
                     self.stop()
@@ -570,21 +588,11 @@ class ContainerHandler:
                     raise RuntimeError(
                         f"Container {self.container_name} is already running. Use exists_ok=True to allow this."
                     )
-            if restart:
-                print("Restarting existing Ollama container...")
-                self.stop()
-                self._start_container()
-                self._wait_for_ready()
-                return
-            else:
-                print("Container is running but not ready, waiting...")
-                self._wait_for_ready()
-                return
 
         # -> Container not running but ollama is reachable (probably locall installed)
         if self._is_port_open() and attach_port:
             print("Ollama is already running and ready")
-            return
+            return False
 
         # -> Port is in use by a different container or process
         if self.is_port_in_use(self.port, self.host) and force:
@@ -593,6 +601,10 @@ class ContainerHandler:
             if self.is_port_in_use(self.port, self.host):
                 raise RuntimeError(
                     f"Port {self.port} is still in use after clearing. Please check manually.")
+        elif self.is_port_in_use(self.port, self.host):
+            raise RuntimeError(
+                f"Port {self.port} is already in use by another process or container. "
+                "Please stop the conflicting service or use a different port.")
 
         # -> Check if container exists but is stopped
         container = self._get_container()
@@ -601,10 +613,13 @@ class ContainerHandler:
                 print("Starting existing Ollama container...")
                 self._start_container()
                 self._wait_for_ready()
-                return
+                return True
             elif not exists_ok and force:
                 print("Deleting existing Ollama container...")
                 self.delete(force=True, remove_volumes=True)
+            else:
+                raise RuntimeError(f"Container {self.container_name} exists but is not running. "
+                                   "Use exists_ok=True to allow this or force=True to delete it.")
 
         # -> Create and start new container from scratch
         print("Creating new Ollama container...")
@@ -612,6 +627,7 @@ class ContainerHandler:
         self._create_container()
         self._start_container()
         self._wait_for_ready(self.startup_timeout)
+        return True
 
     def stop(self):
         """

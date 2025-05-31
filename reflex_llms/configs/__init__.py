@@ -45,7 +45,7 @@ class Config(BaseModel):
     )
 
     timeout: float = Field(
-        default=5.0,
+        default=120.0,
         ge=0.1,
         description="Default timeout for provider health checks",
     )

@@ -25,7 +25,8 @@ def nuke_dir(path: Path):
         os.system(cmd)
 
 
-def clear_port(port: int, container_prefix: str):
+def clear_port(port: int, container_prefix: str, port_inside_container: int = 11434):
+    # TODO! I used port clearing in other project and in other parts but it seems the logic was wrong
     client = docker.from_env()
 
     while True:
@@ -35,10 +36,14 @@ def clear_port(port: int, container_prefix: str):
         for container in containers:
             container.reload()
             ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
-            if f"{port}/tcp" in ports and ports[f"{port}/tcp"] is not None:
-                port_still_in_use = True
-                if container.name.startswith(container_prefix):
-                    container.stop()
+            inside = f"{port_inside_container}/tcp"
+            if inside in ports:
+                for mapping in ports[inside]:
+                    if mapping.get("HostPort", None) is not None \
+                       and mapping.get("HostPort") == str(port):
+                        port_still_in_use = True
+                        if container.name.startswith(container_prefix):
+                            container.stop()
 
         if not port_still_in_use:
             break

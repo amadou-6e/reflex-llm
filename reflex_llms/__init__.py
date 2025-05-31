@@ -78,7 +78,7 @@ import time
 import openai
 import atexit
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Tuple
 from reflex_llms.server import (
     ReflexServer,
     ReflexServerConfig,
@@ -189,12 +189,13 @@ def get_openai_client_type(
         return _selected_provider
 
     print("Checking OpenAI API providers...")
+    provider_errors = {}
 
     for provider in preference_order:
         print(f"  Trying {provider}...")
 
         if provider == "openai":
-            client_config = _try_openai_provider(
+            client_config, error = _try_openai_provider(
                 timeout=timeout,
                 base_url=openai_base_url,
             )
@@ -202,9 +203,11 @@ def get_openai_client_type(
                 _cached_config = client_config.copy()
                 _selected_provider = "openai"
                 return "openai"
+            else:
+                provider_errors["openai"] = error
 
         elif provider == "azure":
-            client_config = _try_azure_provider(
+            client_config, error = _try_azure_provider(
                 timeout=timeout,
                 api_version=azure_api_version,
                 base_url=azure_base_url,
@@ -213,9 +216,11 @@ def get_openai_client_type(
                 _cached_config = client_config.copy()
                 _selected_provider = "azure"
                 return "azure"
+            else:
+                provider_errors["azure"] = error
 
         elif provider == "reflex":
-            client_config = _try_reflex_provider(
+            client_config, error = _try_reflex_provider(
                 reflex_server_config=reflex_server_config,
                 **kwargs,
             )
@@ -223,8 +228,13 @@ def get_openai_client_type(
                 _cached_config = client_config.copy()
                 _selected_provider = "reflex"
                 return "reflex"
+            else:
+                provider_errors["reflex"] = error
 
-    # Nothing worked
+    print("\nNo OpenAI providers available. Details:")
+    for provider, error in provider_errors.items():
+        print(f"  {provider}: {error}")
+
     raise RuntimeError("No OpenAI providers available")
 
 
@@ -306,12 +316,13 @@ def get_openai_client_config(
         return _cached_config.copy()
 
     print("Checking OpenAI API providers...")
+    provider_errors = {}
 
     for provider in preference_order:
         print(f"  Trying {provider}...")
 
         if provider == "openai":
-            client_config = _try_openai_provider(
+            client_config, error = _try_openai_provider(
                 timeout=timeout,
                 base_url=openai_base_url,
             )
@@ -319,9 +330,11 @@ def get_openai_client_config(
                 _cached_config = client_config.copy()
                 _selected_provider = "openai"
                 return client_config
+            else:
+                provider_errors["openai"] = error
 
         elif provider == "azure":
-            client_config = _try_azure_provider(
+            client_config, error = _try_azure_provider(
                 timeout=timeout,
                 api_version=azure_api_version,
                 base_url=azure_base_url,
@@ -330,9 +343,11 @@ def get_openai_client_config(
                 _cached_config = client_config.copy()
                 _selected_provider = "azure"
                 return client_config
+            else:
+                provider_errors["azure"] = error
 
         elif provider == "reflex":
-            client_config = _try_reflex_provider(
+            client_config, error = _try_reflex_provider(
                 reflex_server_config=reflex_server_config,
                 timeout=timeout,
                 **kwargs,
@@ -341,7 +356,12 @@ def get_openai_client_config(
                 _cached_config = client_config.copy()
                 _selected_provider = "reflex"
                 return client_config
+            else:
+                provider_errors["reflex"] = error
 
+    print("\nNo OpenAI providers available. Details:")
+    for provider, error in provider_errors.items():
+        print(f"  {provider}: {error}")
     # Nothing worked
     raise RuntimeError("No OpenAI providers available")
 
@@ -371,7 +391,7 @@ def _resolve_configuration_parameters(
     return Config(**config_data).model_dump()
 
 
-def _try_openai_provider(timeout: float, base_url: str) -> Optional[Dict[str, Any]]:
+def _try_openai_provider(timeout: float, base_url: str) -> Tuple[Optional[Dict[str, Any]], str]:
     """
     Attempt to configure OpenAI provider with configurable settings.
     
@@ -388,7 +408,6 @@ def _try_openai_provider(timeout: float, base_url: str) -> Optional[Dict[str, An
         OpenAI configuration if successful, None otherwise
     """
     try:
-        # Use configurable base URL for health check
         models_url = f"{base_url.rstrip('/')}/models"
         response = requests.get(models_url,
                                 headers={"Authorization": "Bearer test"},
@@ -397,20 +416,25 @@ def _try_openai_provider(timeout: float, base_url: str) -> Optional[Dict[str, An
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
                 print("  Using OpenAI API")
-                return {"api_key": api_key, "base_url": base_url}
+                return {"api_key": api_key, "base_url": base_url}, ""
             else:
                 print("  OpenAI available but no API key")
-    except Exception:
-        print("  OpenAI not accessible")
-
-    return None
+                return None, "OPENAI_API_KEY environment variable not set"
+        else:
+            return None, f"OpenAI API returned status code {response.status_code}"
+    except requests.exceptions.ConnectTimeout:
+        return None, f"Connection timeout after {timeout}s"
+    except requests.exceptions.ConnectionError:
+        return None, "Connection failed - check internet connection"
+    except Exception as e:
+        return None, f"Unexpected error: {str(e)}"
 
 
 def _try_azure_provider(
     timeout: float,
     api_version: str,
     base_url: Optional[str] = None,
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], str]:
     """
     Attempt to configure Azure OpenAI provider with configurable settings.
     
@@ -432,25 +456,32 @@ def _try_azure_provider(
     endpoint = base_url or os.getenv("AZURE_OPENAI_ENDPOINT")
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
 
-    if endpoint and api_key:
-        try:
-            test_url = f"{endpoint.rstrip('/')}/openai/deployments"
-            response = requests.get(test_url, timeout=timeout)
-            if response.status_code < 500:
-                print("  Using Azure OpenAI")
-                return {"api_key": api_key, "base_url": test_url, "api_version": api_version}
-        except Exception:
-            pass
+    if not endpoint:
+        return None, "AZURE_OPENAI_ENDPOINT environment variable not set"
+    if not api_key:
+        return None, "AZURE_OPENAI_API_KEY environment variable not set"
 
-    print("  Azure not available or not configured")
-    return None
+    try:
+        test_url = f"{endpoint.rstrip('/')}/openai/deployments"
+        response = requests.get(test_url, timeout=timeout)
+        if response.status_code < 500:
+            print("  Using Azure OpenAI")
+            return {"api_key": api_key, "base_url": test_url, "api_version": api_version}, ""
+        else:
+            return None, f"Azure API returned status code {response.status_code}"
+    except requests.exceptions.ConnectTimeout:
+        return None, f"Connection timeout after {timeout}s"
+    except requests.exceptions.ConnectionError:
+        return None, "Connection failed - check endpoint URL"
+    except Exception as e:
+        return None, f"Unexpected error: {str(e)}"
 
 
 def _try_reflex_provider(
     reflex_server_config: Optional[ReflexServerConfig] = None,
     timeout: float = 120.0,
     **kwargs: Any,
-) -> Optional[Dict[str, Any]]:
+) -> Tuple[Optional[Dict[str, Any]], str]:
     """
     Attempt to configure RefLex local provider with configurable settings.
     
@@ -473,7 +504,7 @@ def _try_reflex_provider(
 
     if _reflex_server and _reflex_server.is_healthy:
         print("  Using existing RefLex server")
-        return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
+        return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}, ""
 
     print("  Setting up RefLex server...")
     try:
@@ -503,22 +534,21 @@ def _try_reflex_provider(
         if not _reflex_server.auto_setup:
             _reflex_server.start()
 
-        # Wait for setup (max 5 minutes)
+        # Wait for setup (max timeout)
+        '''
+        Does not seem we need this, since start has health check
         for i in range(max(int(timeout / 5), 1)):
             if _reflex_server._setup_complete and _reflex_server.is_healthy:
                 print("  Using RefLex local server")
-                return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}
+                return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}, ""
             time.sleep(5)
+        '''
+        return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}, ""
 
-        # Setup failed
-        _reflex_server.stop()
-        _reflex_server = None
-        print("  RefLex setup failed")
     except Exception as e:
         print(f"  RefLex error: {e}")
         _reflex_server = None
-
-    return None
+        return None, f"RefLex setup failed: {str(e)}"
 
 
 def get_openai_client(preference_order: Optional[List[str]] = None, **kwargs: Any) -> openai.OpenAI:
