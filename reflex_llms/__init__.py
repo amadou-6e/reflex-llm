@@ -85,10 +85,15 @@ from reflex_llms.server import (
     ModelMapping,
 )
 
-from reflex_llms.configs import load_reflex_config, Config
+from reflex_llms.configs import (
+    load_reflex_config,
+    configs_equal_ignoring_uuid,
+    Config,
+)
 
 # Module-level state
-_cached_config: Optional[Dict[str, Any]] = None
+_cached_provider_config: Optional[Dict[str, Any]] = None
+_cached_reflex_config: Config = None
 _reflex_server: Optional[ReflexServer] = None
 _selected_provider: Optional[str] = None
 
@@ -122,6 +127,10 @@ def get_openai_client_type(
     azure_base_url: Optional[str] = None,
     reflex_server_config: Optional[ReflexServerConfig] = None,
     from_file: bool = False,
+    exists_ok: bool = True,
+    force: bool = False,
+    attach_port: bool = True,
+    restart: bool = False,
     **kwargs: Any,
 ) -> str:
     """
@@ -136,7 +145,7 @@ def get_openai_client_type(
     preference_order : list of str or None, default None
         Provider preference order. If None, defaults to ["openai", "azure", "reflex"]
     timeout : float or None, default None
-        Connection timeout in seconds for provider health checks. If None, defaults to 5.0
+        Connection timeout in seconds for provider health checks. If None, defaults to 120.0
     force_recheck : bool, default False
         Force re-checking providers, ignoring cached configuration
     openai_base_url : str or None, default None
@@ -162,7 +171,7 @@ def get_openai_client_type(
     RuntimeError
         If no providers are available or accessible
     """
-    global _cached_config, _selected_provider
+    global _cached_provider_config, _selected_provider, _cached_reflex_config
 
     # Resolve configuration parameters using encapsulated function
     config = _resolve_configuration_parameters(
@@ -175,6 +184,14 @@ def get_openai_client_type(
         reflex_server=reflex_server_config,
     )
 
+    # Return cached config if available and not forcing recheck
+    if not force_recheck and _cached_provider_config is not None and configs_equal_ignoring_uuid(
+            _cached_reflex_config, config):
+        print(f"Using cached {_selected_provider} configuration")
+        return _cached_provider_config.copy()
+
+    _cached_reflex_config = config
+
     # Extract resolved values
     preference_order = config['preference_order']
     timeout = config['timeout']
@@ -182,11 +199,6 @@ def get_openai_client_type(
     azure_api_version = config['azure_api_version']
     azure_base_url = config['azure_base_url']
     reflex_server_config = config['reflex_server']
-
-    # Return cached provider type if available and not forcing recheck
-    if not force_recheck and _selected_provider is not None:
-        print(f"Using cached {_selected_provider} configuration")
-        return _selected_provider
 
     print("Checking OpenAI API providers...")
     provider_errors = {}
@@ -200,7 +212,7 @@ def get_openai_client_type(
                 base_url=openai_base_url,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "openai"
                 return "openai"
             else:
@@ -213,7 +225,7 @@ def get_openai_client_type(
                 base_url=azure_base_url,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "azure"
                 return "azure"
             else:
@@ -221,11 +233,15 @@ def get_openai_client_type(
 
         elif provider == "reflex":
             client_config, error = _try_reflex_provider(
+                exists_ok=exists_ok,
+                force=force,
+                attach_port=attach_port,
+                restart=restart,
                 reflex_server_config=reflex_server_config,
                 **kwargs,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "reflex"
                 return "reflex"
             else:
@@ -247,6 +263,10 @@ def get_openai_client_config(
     azure_base_url: Optional[str] = None,
     reflex_server_config: Optional[ReflexServerConfig] = None,
     from_file: bool = False,
+    exists_ok: bool = True,
+    force: bool = False,
+    attach_port: bool = True,
+    restart: bool = False,
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """
@@ -260,7 +280,7 @@ def get_openai_client_config(
     preference_order : list of str or None, default None
         Provider preference order. If None, defaults to ["openai", "azure", "reflex"]
     timeout : float or None, default None
-        Connection timeout in seconds for provider health checks. If None, defaults to 5.0
+        Connection timeout in seconds for provider health checks. If None, defaults to 120.0
     force_recheck : bool, default False
         Force re-checking providers, ignoring cached configuration
     openai_base_url : str or None, default None
@@ -289,7 +309,7 @@ def get_openai_client_config(
     RuntimeError
         If no providers are available or accessible
     """
-    global _cached_config, _selected_provider
+    global _cached_provider_config, _selected_provider, _cached_reflex_config
 
     # Resolve configuration parameters using encapsulated function
     config = _resolve_configuration_parameters(
@@ -302,6 +322,14 @@ def get_openai_client_config(
         reflex_server=reflex_server_config,
     )
 
+    # Return cached config if available and not forcing recheck
+    if not force_recheck and _cached_provider_config is not None and configs_equal_ignoring_uuid(
+            _cached_reflex_config, config):
+        print(f"Using cached {_selected_provider} configuration")
+        return _cached_provider_config.copy()
+
+    _cached_reflex_config = config
+
     # Extract resolved values
     preference_order = config['preference_order']
     timeout = config['timeout']
@@ -309,11 +337,6 @@ def get_openai_client_config(
     azure_api_version = config['azure_api_version']
     azure_base_url = config['azure_base_url']
     reflex_server_config = config['reflex_server']
-
-    # Return cached config if available and not forcing recheck
-    if not force_recheck and _cached_config is not None:
-        print(f"Using cached {_selected_provider} configuration")
-        return _cached_config.copy()
 
     print("Checking OpenAI API providers...")
     provider_errors = {}
@@ -327,7 +350,7 @@ def get_openai_client_config(
                 base_url=openai_base_url,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "openai"
                 return client_config
             else:
@@ -340,7 +363,7 @@ def get_openai_client_config(
                 base_url=azure_base_url,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "azure"
                 return client_config
             else:
@@ -348,12 +371,16 @@ def get_openai_client_config(
 
         elif provider == "reflex":
             client_config, error = _try_reflex_provider(
+                exists_ok=exists_ok,
+                force=force,
+                attach_port=attach_port,
+                restart=restart,
                 reflex_server_config=reflex_server_config,
                 timeout=timeout,
                 **kwargs,
             )
             if client_config:
-                _cached_config = client_config.copy()
+                _cached_provider_config = client_config.copy()
                 _selected_provider = "reflex"
                 return client_config
             else:
@@ -371,7 +398,7 @@ def _resolve_configuration_parameters(
     config_path: Optional[Union[str, Path]] = None,
     filename: str = "reflex.json",
     **kwargs,
-) -> Config:
+) -> dict:
     """Resolve configuration with clean dict merging."""
 
     config_data = {}
@@ -479,7 +506,10 @@ def _try_azure_provider(
 
 def _try_reflex_provider(
     reflex_server_config: Optional[ReflexServerConfig] = None,
-    timeout: float = 120.0,
+    exists_ok: bool = True,
+    force: bool = False,
+    attach_port: bool = True,
+    restart: bool = False,
     **kwargs: Any,
 ) -> Tuple[Optional[Dict[str, Any]], str]:
     """
@@ -532,17 +562,13 @@ def _try_reflex_provider(
             _reflex_server = ReflexServer(**default_config.model_dump())
 
         if not _reflex_server.auto_setup:
-            _reflex_server.start()
+            _reflex_server.start(
+                exists_ok=exists_ok,
+                force=force,
+                attach_port=attach_port,
+                restart=restart,
+            )
 
-        # Wait for setup (max timeout)
-        '''
-        Does not seem we need this, since start has health check
-        for i in range(max(int(timeout / 5), 1)):
-            if _reflex_server._setup_complete and _reflex_server.is_healthy:
-                print("  Using RefLex local server")
-                return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}, ""
-            time.sleep(5)
-        '''
         return {"api_key": "reflex", "base_url": _reflex_server.openai_compatible_url}, ""
 
     except Exception as e:
@@ -676,8 +702,9 @@ def clear_cache() -> None:
     >>> clear_cache()  # Force provider re-check
     >>> client = get_openai_client()  # Will re-resolve providers
     """
-    global _cached_config, _selected_provider
-    _cached_config = None
+    global _cached_provider_config, _selected_provider
+    _cached_provider_config = None
+    _cached_reflex_config = None
     _selected_provider = None
     print("Cleared provider cache")
 
@@ -733,7 +760,7 @@ def get_module_status() -> Dict[str, Any]:
         "selected_provider":
             _selected_provider,
         "has_cached_config":
-            _cached_config is not None,
+            _cached_provider_config is not None,
         "reflex_server_running":
             _reflex_server is not None and _reflex_server.is_healthy if _reflex_server else False,
         "reflex_server_url":

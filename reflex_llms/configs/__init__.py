@@ -9,8 +9,8 @@ automatically when RefLex components are initialized.
 
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
-from pydantic import ValidationError
+from typing import Optional, Union, List
+from copy import deepcopy
 from pydantic import BaseModel, Field
 from reflex_llms.server import ReflexServerConfig
 
@@ -54,6 +54,31 @@ class Config(BaseModel):
         default_factory=ReflexServerConfig,
         description="RefLex server configuration",
     )
+
+
+def configs_equal_ignoring_uuid(config1_dict: dict, config2_dict: dict):
+    """
+    Compare two configuration dictionaries while ignoring auto-generated UUID container names.
+    """
+
+    # Create deep copies to avoid modifying originals
+    c1 = deepcopy(config1_dict)
+    c2 = deepcopy(config2_dict)
+
+    # Normalize container names for both configs
+    def normalize_container_name(config):
+        if 'reflex_server' in config and config['reflex_server']:
+            container_name = config['reflex_server'].get('container_name')
+            if (container_name and isinstance(container_name, str) and
+                    'ollama-reflex-' in container_name):
+                config['reflex_server']['container_name'] = 'normalized-container-name'
+                print(f"Normalized container name from {container_name} "
+                      "to normalized-container-name")
+
+    normalize_container_name(c1)
+    normalize_container_name(c2)
+
+    return Config(**c1) == Config(**c2)
 
 
 def _find_reflex_config(

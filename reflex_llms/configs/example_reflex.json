@@ -8,7 +8,7 @@
         "azure",
         "reflex"
     ],
-    "timeout": 5.0,
+    "timeout": 120.0,
     "reflex_server": {
         "host": "127.0.0.1",
         "port": 11434,
