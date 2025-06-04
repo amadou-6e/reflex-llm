@@ -191,7 +191,7 @@ class ContainerHandler:
         self.startup_timeout = startup_timeout
 
         # Set up data path for persistent storage
-        self.data_path = data_path or Path.home() / ".ollama-docker"
+        self.data_path = data_path or Path(Path.home(), ".ollama-docker")
         self.data_path.mkdir(parents=True, exist_ok=True)
 
         self.client = None
@@ -664,3 +664,16 @@ class ContainerHandler:
             The OpenAI-compatible API endpoint URL
         """
         return f"http://{self.host}:{self.port}/v1"
+
+    @property
+    def status(self) -> bool:
+        """_summary_
+
+        Returns:
+            bool: _description_
+        """
+        container = self._get_container()
+        if not container:
+            return False
+        container.reload()
+        return container.status

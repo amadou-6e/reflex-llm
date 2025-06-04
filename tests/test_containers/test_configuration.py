@@ -23,9 +23,9 @@ def high_port_handler():
 
 
 @pytest.fixture
-def nested_temp_dir(tmp_path) -> Path:
+def nested_temp_dir() -> Path:
     """Create nested temporary directories for testing."""
-    nested_path = Path(tmp_path, "deep", "nested", "ollama")
+    nested_path = Path(TEMP_DIR, "deep", "nested", "ollama")
     return nested_path
 
 
@@ -41,9 +41,9 @@ def custom_port_handler():
 
 
 @pytest.fixture
-def existing_data_dir(tmp_path) -> Path:
+def existing_data_dir() -> Path:
     """Create an existing data directory with test content."""
-    data_path = Path(tmp_path, "existing_ollama")
+    data_path = Path(TEMP_DIR, "existing_ollama")
     data_path.mkdir(parents=True, exist_ok=True)
 
     # Create a test file in the directory
@@ -58,12 +58,12 @@ def existing_data_dir(tmp_path) -> Path:
 # =======================================
 
 
-def test_init_creates_data_directory(temp_dir: Path):
+def test_init_creates_data_directory():
     """Test that initialization creates data directory."""
-    handler = ContainerHandler(data_path=temp_dir)
+    handler = ContainerHandler(data_path=TEMP_DIR)
 
-    assert temp_dir.exists()
-    assert handler.data_path == temp_dir
+    assert TEMP_DIR.exists()
+    assert handler.data_path == TEMP_DIR
 
 
 def test_init_default_data_path():

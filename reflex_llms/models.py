@@ -25,7 +25,7 @@ Basic usage for model management:
 
 >>> from ollama_model_manager import OllamaModelManager
 >>> manager = OllamaModelManager()
->>> manager.setup_openai_models()
+>>> manager.setup_model_mapping()
 >>> models = manager.list_models()
 
 Custom Ollama URL:
@@ -97,7 +97,7 @@ class OllamaManager:
     >>> manager = OllamaModelManager()
     >>> manager.pull_model("llama3.2:3b")
     >>> models = manager.list_models()
-    >>> manager.setup_openai_models()
+    >>> manager.setup_model_mapping()
 
     Custom configuration:
 
@@ -302,7 +302,7 @@ class OllamaManager:
         models = self.list_models()
         return any(model["name"].startswith(model_name) for model in models)
 
-    def setup_openai_models(self) -> bool:
+    def setup_model_mapping(self) -> bool:
         """
         Set up OpenAI-compatible model mappings.
 
@@ -318,7 +318,7 @@ class OllamaManager:
         Examples
         --------
         >>> manager = OllamaModelManager()
-        >>> success = manager.setup_openai_models()
+        >>> success = manager.setup_model_mapping()
         >>> if success:
         ...     print("All OpenAI models configured successfully")
         ... else:

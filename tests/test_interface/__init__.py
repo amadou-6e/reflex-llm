@@ -83,8 +83,7 @@ def temp_config_dir():
     import tempfile
     import shutil
 
-    temp_dir = tempfile.mkdtemp()
-    config_path = Path(temp_dir) / "reflex.json"
+    config_path = Path(TEMP_DIR, "reflex.json")
 
     config_data = {
         "openai_base_url": "https://discovered-api.example.com/v1",
@@ -101,7 +100,7 @@ def temp_config_dir():
     with open(config_path, 'w') as f:
         json.dump(config_data, f)
 
-    yield temp_dir, config_data
+    yield TEMP_DIR, config_data
 
     # Cleanup
-    shutil.rmtree(temp_dir)
+    shutil.rmtree(TEMP_DIR)

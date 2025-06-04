@@ -221,7 +221,7 @@ class ReflexServer:
         self.minimal_setup = model_mappings.get("minimal_setup", False)
 
         # Initialize components
-        self.container_handler = ContainerHandler(
+        self.container = ContainerHandler(
             host=host,
             port=port,
             image=image,
@@ -233,7 +233,7 @@ class ReflexServer:
             if self.minimal_setup else model_mappings.get("model_mapping")
 
         self.model_manager = OllamaManager(
-            ollama_url=self.container_handler.api_url,
+            ollama_url=self.container.api_url,
             model_mappings=default_selection,
         )
 
@@ -289,7 +289,7 @@ class ReflexServer:
 
         # Step 1: Ensure container is running
         print("Starting Ollama container...")
-        is_container = self.container_handler.start(
+        is_container = self.container.start(
             exists_ok=exists_ok,
             force=force,
             restart=restart,
@@ -302,7 +302,7 @@ class ReflexServer:
 
         # Step 3: Set up model mappings
         print("Setting up OpenAI model mappings...")
-        success = self.model_manager.setup_openai_models()
+        success = self.model_manager.setup_model_mapping()
 
         if not success:
             print("Warning: Some models failed to setup, but backend is functional")
@@ -395,12 +395,12 @@ class ReflexServer:
 
         try:
             # Check 1: Container running
-            if not self.container_handler._is_container_running():
+            if not self.container._is_container_running():
                 print("Health check failed: Container not running")
                 return False
 
             # Check 2: Port accessible
-            if not self.container_handler._is_port_open():
+            if not self.container._is_port_open():
                 print("Health check failed: Port not accessible")
                 return False
 
@@ -468,8 +468,8 @@ class ReflexServer:
 
             return {
                 "setup_complete": self._setup_complete,
-                "container_running": self.container_handler._is_container_running(),
-                "port_open": self.container_handler._is_port_open(),
+                "container_running": self.container._is_container_running(),
+                "port_open": self.container._is_port_open(),
                 "total_models": len(models),
                 "openai_compatible_models": openai_models,
                 "api_url": self.api_url,
@@ -494,7 +494,7 @@ class ReflexServer:
         """
         print("Stopping RefLex OpenAI backend...")
         try:
-            self.container_handler.stop()
+            self.container.stop()
             self._setup_complete = False
             print("Backend stopped successfully")
         except Exception as e:
@@ -534,7 +534,7 @@ class ReflexServer:
         str
             Base URL for direct Ollama API access
         """
-        return self.container_handler.api_url
+        return self.container.api_url
 
     @property
     def openai_compatible_url(self) -> str:
@@ -546,7 +546,7 @@ class ReflexServer:
         str
             URL for OpenAI-compatible API endpoints (includes /v1 suffix)
         """
-        return self.container_handler.openai_compatible_url
+        return self.container.openai_compatible_url
 
     @property
     def is_running(self) -> bool:
@@ -558,7 +558,7 @@ class ReflexServer:
         bool
             True if the backend is accessible, False otherwise
         """
-        return self.container_handler._is_port_open()
+        return self.container._is_port_open()
 
     @property
     def is_healthy(self) -> bool:

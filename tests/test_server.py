@@ -118,9 +118,9 @@ def temp_data_path() -> Path:
 
 
 @pytest.fixture
-def custom_data_path(tmp_path) -> Path:
+def custom_data_path() -> Path:
     """Create custom data path for testing."""
-    custom_path = tmp_path / "custom_reflex_test"
+    custom_path = Path(TEMP_DIR, "custom_reflex_test")
     custom_path.mkdir(parents=True, exist_ok=True)
     return custom_path
 
@@ -332,7 +332,7 @@ def test_reflex_server_initialization_no_auto_setup(reflex_server_no_auto_setup:
     assert server._setup_complete is False
 
     # Check component initialization
-    assert isinstance(server.container_handler, ContainerHandler)
+    assert isinstance(server.container, ContainerHandler)
     assert isinstance(server.model_manager, OllamaManager)
 
     # Check that auto setup was skipped
@@ -358,8 +358,8 @@ def test_reflex_server_component_urls(reflex_server_no_auto_setup: ReflexServer)
 
     assert server.api_url == expected_api_url
     assert server.openai_compatible_url == expected_openai_url
-    assert server.container_handler.api_url == expected_api_url
-    assert server.container_handler.openai_compatible_url == expected_openai_url
+    assert server.container.api_url == expected_api_url
+    assert server.container.openai_compatible_url == expected_openai_url
 
 
 # =======================================
@@ -374,8 +374,8 @@ def test_setup_essential_models_mapping(reflex_server_no_auto_setup: ReflexServe
     # Test the _setup_essential_models method creates correct mapping
     original_mappings = server.model_manager.model_mappings.copy()
 
-    # Mock the setup_openai_models to avoid actual model operations
-    with patch.object(server.model_manager, 'setup_openai_models', return_value=True):
+    # Mock the setup_model_mapping to avoid actual model operations
+    with patch.object(server.model_manager, 'setup_model_mapping', return_value=True):
         result = server._setup_essential_models()
 
     # Should have returned True
@@ -410,7 +410,7 @@ def test_setup_method_integration(reflex_server_no_auto_setup: ReflexServer):
     server = reflex_server_no_auto_setup
 
     # Mock all the components to simulate successful setup
-    with patch.object(server.container_handler, 'ensure_running') as mock_ensure_running, \
+    with patch.object(server.container, 'ensure_running') as mock_ensure_running, \
          patch.object(server, '_wait_for_ollama_ready') as mock_wait, \
          patch.object(server, '_setup_essential_models', return_value=True) as mock_setup_models, \
          patch.object(server, 'health_check', return_value=True) as mock_health:
@@ -433,8 +433,7 @@ def test_setup_method_failure(reflex_server_no_auto_setup: ReflexServer):
     server = reflex_server_no_auto_setup
 
     # Mock container to fail
-    with patch.object(server.container_handler,
-                      'ensure_running',
+    with patch.object(server.container, 'ensure_running',
                       side_effect=Exception("Container failed")):
 
         result = server.start()
@@ -455,8 +454,8 @@ def test_health_check_all_pass(reflex_server_no_auto_setup: ReflexServer):
 
     mock_models = [{"name": "gpt-3.5-turbo"}, {"name": "llama3.2:3b"}]
 
-    with patch.object(server.container_handler, '_is_container_running', return_value=True), \
-         patch.object(server.container_handler, '_is_port_open', return_value=True), \
+    with patch.object(server.container, '_is_container_running', return_value=True), \
+         patch.object(server.container, '_is_port_open', return_value=True), \
          patch.object(server.model_manager, 'list_models', return_value=mock_models):
 
         result = server.health_check(force=True)
@@ -467,7 +466,7 @@ def test_health_check_container_not_running(reflex_server_no_auto_setup: ReflexS
     """Test health check when container is not running."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, '_is_container_running', return_value=False):
+    with patch.object(server.container, '_is_container_running', return_value=False):
         result = server.health_check(force=True)
         assert result is False
 
@@ -476,8 +475,8 @@ def test_health_check_port_not_open(reflex_server_no_auto_setup: ReflexServer):
     """Test health check when port is not accessible."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, '_is_container_running', return_value=True), \
-         patch.object(server.container_handler, '_is_port_open', return_value=False):
+    with patch.object(server.container, '_is_container_running', return_value=True), \
+         patch.object(server.container, '_is_port_open', return_value=False):
 
         result = server.health_check(force=True)
         assert result is False
@@ -490,8 +489,8 @@ def test_health_check_no_openai_models(reflex_server_no_auto_setup: ReflexServer
     # Mock models that don't match OpenAI naming
     mock_models = [{"name": "some-other-model"}, {"name": "another-model"}]
 
-    with patch.object(server.container_handler, '_is_container_running', return_value=True), \
-         patch.object(server.container_handler, '_is_port_open', return_value=True), \
+    with patch.object(server.container, '_is_container_running', return_value=True), \
+         patch.object(server.container, '_is_port_open', return_value=True), \
          patch.object(server.model_manager, 'list_models', return_value=mock_models):
 
         result = server.health_check(force=True)
@@ -506,7 +505,7 @@ def test_health_check_caching(reflex_server_no_auto_setup: ReflexServer):
     # Set last health check to recent time
     server._last_health_check = time.time()
 
-    with patch.object(server.container_handler, '_is_container_running') as mock_container:
+    with patch.object(server.container, '_is_container_running') as mock_container:
         # Should use cache and not call container check
         result = server.health_check(force=False)
         mock_container.assert_not_called()
@@ -516,7 +515,7 @@ def test_health_check_exception_handling(reflex_server_no_auto_setup: ReflexServ
     """Test health check exception handling."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler,
+    with patch.object(server.container,
                       '_is_container_running',
                       side_effect=Exception("Test exception")):
 
@@ -537,8 +536,8 @@ def test_get_status_success(reflex_server_no_auto_setup: ReflexServer):
     mock_models = [{"name": "gpt-3.5-turbo"}, {"name": "llama3.2:3b"}]
 
     with patch.object(server.model_manager, 'list_models', return_value=mock_models), \
-         patch.object(server.container_handler, '_is_container_running', return_value=True), \
-         patch.object(server.container_handler, '_is_port_open', return_value=True), \
+         patch.object(server.container, '_is_container_running', return_value=True), \
+         patch.object(server.container, '_is_port_open', return_value=True), \
          patch.object(server, 'health_check', return_value=True):
 
         status = server.get_status()
@@ -576,7 +575,7 @@ def test_stop_method(reflex_server_no_auto_setup: ReflexServer):
     server = reflex_server_no_auto_setup
     server._setup_complete = True
 
-    with patch.object(server.container_handler, 'stop') as mock_stop:
+    with patch.object(server.container, 'stop') as mock_stop:
         server.stop()
 
         mock_stop.assert_called_once()
@@ -587,7 +586,7 @@ def test_stop_method_with_error(reflex_server_no_auto_setup: ReflexServer):
     """Test stop method when container stop fails."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, 'stop', side_effect=Exception("Stop failed")):
+    with patch.object(server.container, 'stop', side_effect=Exception("Stop failed")):
         # Should not raise exception
         server.stop()
 
@@ -617,10 +616,10 @@ def test_is_running_property(reflex_server_no_auto_setup: ReflexServer):
     """Test is_running property."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, '_is_port_open', return_value=True):
+    with patch.object(server.container, '_is_port_open', return_value=True):
         assert server.is_running is True
 
-    with patch.object(server.container_handler, '_is_port_open', return_value=False):
+    with patch.object(server.container, '_is_port_open', return_value=False):
         assert server.is_running is False
 
 
@@ -644,7 +643,7 @@ def test_setup_with_model_failure(reflex_server_no_auto_setup: ReflexServer):
     """Test setup when model setup fails but continues."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, 'ensure_running'), \
+    with patch.object(server.container, 'ensure_running'), \
          patch.object(server, '_wait_for_ollama_ready'), \
          patch.object(server, '_setup_essential_models', return_value=False), \
          patch.object(server, 'health_check', return_value=True):
@@ -660,7 +659,7 @@ def test_setup_with_health_check_failure(reflex_server_no_auto_setup: ReflexServ
     """Test setup when final health check fails."""
     server = reflex_server_no_auto_setup
 
-    with patch.object(server.container_handler, 'ensure_running'), \
+    with patch.object(server.container, 'ensure_running'), \
          patch.object(server, '_wait_for_ollama_ready'), \
          patch.object(server, '_setup_essential_models', return_value=True), \
          patch.object(server, 'health_check', return_value=False):
@@ -689,11 +688,11 @@ def test_container_lifecycle_real(lifecycle_server: ReflexServer):
 
     # Start container manually
     print("Testing container startup...")
-    server.container_handler.start()
+    server.container.start()
 
     # Should now be running
-    assert server.container_handler._is_container_running() is True
-    assert server.container_handler._is_port_open() is True
+    assert server.container._is_container_running() is True
+    assert server.container._is_port_open() is True
 
     # Test Ollama API connectivity
     print("Testing Ollama API connectivity...")
@@ -722,7 +721,7 @@ def test_model_download_and_management(model_download_server: ReflexServer):
     server = model_download_server
 
     # Setup container
-    server.container_handler.start()
+    server.container.start()
     server._wait_for_ollama_ready()
 
     print("Testing model download operations...")
@@ -776,7 +775,7 @@ def test_openai_model_setup_real(openai_setup_server: ReflexServer):
     server = openai_setup_server
 
     # Setup container
-    server.container_handler.start()
+    server.container.start()
     server._wait_for_ollama_ready()
 
     print("Testing OpenAI model setup...")
@@ -921,15 +920,15 @@ def test_server_robustness_and_recovery(robustness_server: ReflexServer):
         print(f"Cycle {i+1}")
 
         # Start
-        server.container_handler.start()
-        assert server.container_handler._is_port_open() is True
+        server.container.start()
+        assert server.container._is_port_open() is True
 
         # Stop
-        server.container_handler.stop()
+        server.container.stop()
         time.sleep(2)  # Give it time to stop
 
         # Should be stopped
-        assert server.container_handler._is_container_running() is False
+        assert server.container._is_container_running() is False
 
     # Test health checks under various conditions
     print("Testing health checks...")
@@ -939,7 +938,7 @@ def test_server_robustness_and_recovery(robustness_server: ReflexServer):
     assert health_stopped is False
 
     # When started
-    server.container_handler.start()
+    server.container.start()
     server._wait_for_ollama_ready()
     health_running = server.health_check(force=True)
     assert health_running is True
@@ -966,7 +965,7 @@ def test_all_model_mappings(all_mappings_server: ReflexServer):
     """Test that all model mappings in the library can be processed."""
     server = all_mappings_server
 
-    server.container_handler.start()
+    server.container.start()
     server._wait_for_ollama_ready()
 
     print("Testing all model mappings...")
@@ -1031,11 +1030,11 @@ def test_error_recovery_real(error_recovery_server: ReflexServer):
     server = error_recovery_server
 
     # Test setup when Docker is available
-    server.container_handler.start()
+    server.container.start()
 
     # Test recovery from stopped container
     print("Testing recovery from stopped container...")
-    server.container_handler.stop()
+    server.container.stop()
     time.sleep(2)
 
     # Health check should fail

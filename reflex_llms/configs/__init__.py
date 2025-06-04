@@ -72,8 +72,6 @@ def configs_equal_ignoring_uuid(config1_dict: dict, config2_dict: dict):
             if (container_name and isinstance(container_name, str) and
                     'ollama-reflex-' in container_name):
                 config['reflex_server']['container_name'] = 'normalized-container-name'
-                print(f"Normalized container name from {container_name} "
-                      "to normalized-container-name")
 
     normalize_container_name(c1)
     normalize_container_name(c2)

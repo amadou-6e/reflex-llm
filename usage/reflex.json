@@ -13,7 +13,7 @@
         "host": "127.0.0.1",
         "port": 11435,
         "image": "ollama/ollama:latest",
-        "container_name": null,
+        "container_name": "from_file_config",
         "data_path": null,
         "startup_timeout": 120,
         "auto_setup": true,

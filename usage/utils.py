@@ -1,9 +1,9 @@
 import os
-from pathlib import Path
+import numpy as np
 from pathlib import Path
 from IPython.display import Markdown, display
 from dotenv import load_dotenv
-from typing import List, Optional
+from typing import Any, Iterator, Union, List, Optional
 
 
 def display_json(script_path):
@@ -115,3 +115,57 @@ def load_and_verify_env(env_file: str = '.env', required_vars: Optional[List[str
         print("Environment file loaded successfully")
 
     return True
+
+
+def display_message(message: Union[str, Any], as_markdown: bool = True) -> None:
+    """Display a message, extracting content from OpenAI responses if needed."""
+
+    # Extract content
+    if isinstance(message, str):
+        content = message
+    elif hasattr(message, 'choices') and message.choices:
+        content = message.choices[0].message.content
+    else:
+        content = str(message)
+
+    if as_markdown:
+        display(Markdown(content))
+    else:
+        print(content)
+
+
+def display_stream(stream: Iterator[Any]) -> str:
+    """Display streaming response in real-time and return full content."""
+
+    full_response = ""
+
+    for chunk in stream:
+        if hasattr(chunk, 'choices') and chunk.choices:
+            delta = chunk.choices[0].delta
+            if hasattr(delta, 'content') and delta.content is not None:
+                content = delta.content
+                print(content, end="", flush=True)
+                full_response += content
+
+    return full_response
+
+
+def display_embeddings(embeddings_response: Any, show_stats: bool = False) -> None:
+    """Display basic embedding information."""
+
+    if not hasattr(embeddings_response, 'data') or not embeddings_response.data:
+        print("No embedding data found")
+        return
+
+    embeddings = [item.embedding for item in embeddings_response.data]
+    model = getattr(embeddings_response, 'model', 'unknown')
+
+    print(f"Model: {model}")
+    print(f"Embeddings: {len(embeddings)}")
+    print(f"Dimensions: {len(embeddings[0]) if embeddings else 0}")
+
+    if show_stats and embeddings:
+        arr = np.array(embeddings[0])
+        print(f"Mean: {arr.mean():.6f}")
+        print(f"Std: {arr.std():.6f}")
+        print(f"Preview: {arr[:5].tolist()}")

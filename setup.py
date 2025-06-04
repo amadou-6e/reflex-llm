@@ -11,7 +11,7 @@ def parse_requirements(filename):
 
 setup(
     name="reflex-llms",
-    version="0.1.0",
+    version="0.2.0",
     author="Amadou Wolfgang Cisse",
     author_email="amadou.6e@googlemail.com",
     description=
@@ -28,7 +28,8 @@ setup(
     install_requires=parse_requirements("requirements.txt"),
     include_package_data=True,
     packages=find_packages(exclude=["usage", "usage.*"]),
+    data_files=[(".", ["requirements.txt"])],
     package_data={
-        "reflex_llms": ["reflex_llms/configs/*/*",],
+        "reflex_llms": ["configs/*/*", "requirements.txt"],
     },
 )
